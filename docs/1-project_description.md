@@ -1,6 +1,6 @@
 # OndeStudio — Project Description
 
-> **Status:** living document — v1.2, 2026-06-12 (first discussion cycle closed)
+> **Status:** living document — v1.3, 2026-06-12 (discussion cycle + full AzuraCast scan)
 > **Nature:** contexts / goals / guidelines. This is *not* an implementation plan;
 > implementation planning will be a separate document informed by this one.
 
@@ -48,9 +48,12 @@ People interacting with the station's production:
 
 Everything runs on a single server (`onde-zero`):
 
-- **AzuraCast** (Docker, `/var/azuracast`) — the production playout system, at
-  `studio.ondezero.net`. Two stations: **WaveZero** (shortcode `oz`, production) and
-  **WaveZero-TEST** (`wz-test`). Icecast frontend + Liquidsoap backend, Europe/Paris.
+- **AzuraCast** (Docker, `/var/azuracast`, version 0.23.3) — the production playout
+  system, at `studio.ondezero.net`. Two stations: **WaveZero** (shortcode `oz`,
+  production, frontend port 8000 / DJ port 8005) and **WaveZero-TEST** (`wz-test`,
+  8010 / 8015). Icecast frontend + Liquidsoap backend, Europe/Paris. Live recording
+  enabled on main (mp3), disabled on test. No AzuraCast webhooks are configured today
+  (OndePlayer uses SSE + polling).
   The test station mirrors the main one for broadcaster setup testing: identical
   broadcaster settings (server `wavezero.world`, mountpoint `/input`, same manually
   duplicated credentials), **only the port differs** (8005 main, 8015 test), and
@@ -58,6 +61,23 @@ Everything runs on a single server (`onde-zero`):
   `test.wavezero.world` looks like the main one with a black-&-white background,
   playing a very short rotation playlist. A broadcaster who validated their setup
   against test goes on air on the main station by just changing the port.
+  (Mirror drift observed in the 2026-06 scan: two accounts missing on test, two
+  leftover test accounts — see §2.3.)
+- **Custom Liquidsoap layer** (in the main station's custom config — playout logic
+  that phases 2–3 must understand and replicate):
+  - a **second live input** `/input2` with its own auth hook and priority fallback
+    (standard input wins) — dormant today, probably intended as failover, never
+    really used;
+  - a **custom live-recording chain** (320 kbps mp3 fragments per DJ,
+    `stream_YYYYMMDD-HHMMSS.mp3`) alongside AzuraCast's native recording — the files
+    the replay pipeline consumes;
+  - a legacy **"interception" command**: a server trigger that smoothly overlays a
+    short from the `[INTERCEPTION]` pool on top of the program — rarely used,
+    documented for completeness, no UI planned (§4.11);
+  - a full **broadcast mastering chain** (`master_me`: −16 LUFS target, multiband
+    compression, limiter, brickwall) on the station output;
+  - live metadata forced at Liquidsoap level to `artist="● LIVE"`,
+    `title=<DJ display name>` — the display-name hack's implementation.
 - **OndePlayer** (`/opt/OndePlayer`, systemd service) — our custom public player and
   site, a Bun-powered multi-station web app. It already implements two mechanisms
   highly relevant to OndeStudio:
@@ -111,7 +131,9 @@ Specific recurring frictions:
   Upcoming. Information must then be updated in multiple places.
 - **Broadcaster accounts are duplicated by hand.** Every broadcaster exists twice
   (main + test station, see §2.2) with manually synced credentials; every change is a
-  double edit.
+  double edit. The 2026-06 API scan found the predictable drift: two accounts missing
+  on test, two leftover test accounts — OndeStudio's initial import reconciles such
+  divergence, each fix subject to approval (§6).
 - **The replay pipeline is crude.** Day-fragments are concatenated blindly (two
   different lives on the same day would merge into one file), the streamer→artist
   mapping is hardcoded in the script, and the current opus encode target makes the
@@ -328,6 +350,10 @@ per-show default and overridable for any specific week.
 Today the station maintains **title + description** per show/episode. The model must
 anticipate (without requiring yet): artwork, credits & links, tags, tracklists.
 
+**Tags double as lightweight event grouping**: slots, recordings and podcasts sharing
+a tag (e.g. a multi-day special coverage like the flotilla broadcasts) can be filtered
+and browsed together — no dedicated "event" structure beyond that.
+
 ### 4.8 Broadcaster types
 
 - **Team ("unlimited")** — may go live anytime; planned slots are announcements.
@@ -390,6 +416,9 @@ what AzuraCast cannot do: **pinning** a specific mix to a specific night (§4.2)
 
 On the grid, insert rules appear as a **thin overlay band** on their active windows —
 visible but not slot-like; full editing lives in the rotation/inserts panel (§5.6).
+
+A **manual-trigger variant** exists today as the legacy Liquidsoap "interception"
+command (§2.2) — rarely used; documented for completeness, no UI planned.
 
 ---
 
@@ -560,7 +589,8 @@ a manual AzuraCast edit, and never fights an emergency fix.
 
 **Freshness — near-realtime.** Live and now-playing state arrives by SSE (seconds);
 structural state by polling (≤ 30 s). The grid must be trustable as "what is true
-right now".
+right now". AzuraCast webhooks — currently unused on the instance — may complement
+SSE/polling as a push channel.
 
 **Adoption is per-feature.** Each workflow (grid, board, broadcaster management,
 metadata…) switches from the AzuraCast UI to OndeStudio individually, once its
@@ -568,9 +598,11 @@ OndeStudio version is trusted — no big-bang cutover.
 
 **Initial state & migration — fresh start.** OndeStudio's initial grid and objects
 are seeded by importing what AzuraCast already knows (playlists, schedule items,
-streamers — imported as untagged candidates to adopt progressively). The spreadsheet
-is retired without migrating its history; the Wekan board is archived read-only, with
-only active cards manually recreated during adoption. No migration tooling is built.
+streamers — imported as untagged candidates to adopt progressively). The import also
+**reconciles main/test mirror drift** (missing mirrored accounts, leftover test
+accounts), proposing each fix for approval. The spreadsheet is retired without
+migrating its history; the Wekan board is archived read-only, with only active cards
+manually recreated during adoption. No migration tooling is built.
 
 **Phase-1 adoption bar** (what makes the team switch): the **grid** replaces the
 spreadsheet, the **board** replaces Wekan, and **write-back works** — decisions in
@@ -592,7 +624,9 @@ today — OndePlayer, the drop tool, the OndePi boxes.
 
 ### Phase 3 — Autonomous product
 
-OndeStudio manages Liquidsoap/Icecast directly; AzuraCast exits the picture. The
+OndeStudio manages Liquidsoap/Icecast directly; AzuraCast exits the picture — which
+includes owning the custom playout layer that lives today as custom Liquidsoap config
+(§2.2): mastering chain, live input handling and priorities, live recording. The
 project becomes a packaged, generic, installable application with proper
 install/deploy/upgrade scripts and documentation. This is also when **OndePlayer is
 absorbed** as OndeStudio's public-facing module, and when genericity (multi-station
@@ -630,6 +664,10 @@ Orientations, not final decisions — finalized in the implementation plan.
   AzuraCast Docker stack. Phase 3 brings proper packaging for third parties.
 - **Secrets**: real credentials live in the repo-local `.env` (gitignored — never
   committed, never served); `.env.example` documents the expected variables.
+- **API identity**: research currently uses the shared "OndeZero API account"
+  (global-admin role, also used by OndePlayer). When OndeStudio begins writing to
+  AzuraCast, it gets a **dedicated account** — clean audit trail, unambiguous
+  ownership of tagged objects.
 
 ---
 
