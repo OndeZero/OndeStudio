@@ -1,6 +1,6 @@
 # OndeStudio — Project Description
 
-> **Status:** living document — v2.1, 2026-06-12
+> **Status:** living document — v2.2, 2026-06-12
 > **Nature:** contexts / goals / guidelines — the bridge between the team's ideas and
 > needs on one side, and implementation decisions on the other. This is *not* an
 > implementation plan; that will be a separate document (`docs/2-…`) informed by this
@@ -126,7 +126,7 @@ folder auto-feeds the `[PODCAST]` playlists, which back the AzuraCast podcast se
 - **OndePi** ([github.com/Maigre/OndePi](https://github.com/Maigre/OndePi)) —
   Raspberry-Pi "ready to stream" boxes; two exist (`ondepi-1`, `ondepi-2`),
   registered as unlimited team broadcaster accounts. Used for live music, mobile
-  conference recording, street interviews, studio lives… (§5.6).
+  conference recording, street interviews, studio lives… (§5.7).
 
 **The editorial tools OndeStudio replaces:**
 
@@ -257,7 +257,7 @@ storage design that tolerates manual filetree management (§4.11).
    the playout system (via the AzuraCast API first), not merely tracked (§6).
 5. **Hierarchical, right-depth access**: heavyweight flows (schedule a show: grid
    placement, content management, discussion) and lightweight flows (quickly fix the
-   metadata of the currently-aired or upcoming item) are both first-class (§5.4,
+   metadata of the currently-aired or upcoming item) are both first-class (§5.5,
    §8.1).
 6. **Progressive autonomy**: an architecture that starts as an AzuraCast overlay and
    ends as a standalone product (§6).
@@ -324,7 +324,7 @@ the primary editing surface (create, move, negotiate, validate).
   each occurrence is individually movable. Metadata stays synced with the original.
   Echoes also cover **recorded live sessions** (not a current practice, anticipated):
   an echo slot can be pre-bound to a *future* live — its content state stays `empty`
-  and auto-fills once the live's recording is processed and attributed (§5.7), with
+  and auto-fills once the live's recording is processed and attributed (§5.8), with
   the per-show fallback policy (§4.5) applying if the recording never materializes;
   alternatively, any past session can be picked from the recordings library.
 - **Live slot** — a planned live session. For external broadcasters it is also the
@@ -390,7 +390,7 @@ attachable at any point:
 The grid badge combines the primary state color with warning icons for raised flags.
 
 For **live slots**, `ready` has a concrete meaning: the broadcaster's setup has been
-verified against the test station (§2.2, §5.9).
+verified against the test station (§2.2, §5.10).
 
 A slot can be `validated` (negotiation) and still `empty` (content) — that
 combination is precisely what the team needs to see coming. Rotation blocks don't
@@ -454,7 +454,7 @@ roughly two mixes a night with rotation filling in between). The night rule adds
 AzuraCast cannot do: **pinning** a specific mix to a specific night (§4.2).
 
 On the grid, insert rules appear as a **thin overlay band** on their active windows —
-visible but not slot-like; full editing lives in the rotation/inserts panel (§5.8).
+visible but not slot-like; full editing lives in the rotation/inserts panel (§5.9).
 
 A **manual-trigger variant** exists today as the legacy Liquidsoap "interception"
 command (§2.2) — rarely used; documented for completeness, no UI planned.
@@ -468,7 +468,7 @@ command (§2.2) — rarely used; documented for completeness, no UI planned.
 
 A **session** is one actual continuous live performance as it happened on air —
 distinct from the slot that announced it. Sessions are reconstructed from recording
-fragments and attributed to slots (§5.7); slots are estimates, sessions are reality.
+fragments and attributed to slots (§5.8); slots are estimates, sessions are reality.
 
 ### 4.10 Metadata model
 
@@ -565,7 +565,35 @@ convention hints when a file sits outside its expected place) and links each fil
 its domain objects (show, episode, pool, slot). Its detailed UX design is deferred to
 the implementation phase.
 
-### 5.4 Upcoming & quick metadata editing
+### 5.4 Object pages & show library
+
+The grid (§5.1), the board (§5.2) and the media browser (§5.3) are **lenses** — the
+same reality seen by *time*, by *process* and by *disk*. None of them is where a show
+"lives": every domain object has one canonical **page**, the hub the lenses link
+into.
+
+The **show page** is the flagship: identity and metadata, slot bindings with next and
+past occurrences (a mini-schedule), the **episode queue with its files** (a scoped
+media browser of the show's own folder — possible because conventions bind
+folder ↔ show, §4.11), per-show settings (fallback policy, trust, replay flag,
+contributor timezone), linked board cards, and the show's recordings/replays. It is
+the "meta view" that groups files, meta and features without drowning in the global
+filetree.
+
+The **show library** is the index of those pages: a master-detail surface — shows
+list (sortable, filterable, with state summaries) on one side, the show page as the
+detail pane on the other; the same page is also URL-addressable full-screen.
+
+**One navigation rule keeps clicks low**: any object in any lens is one click from
+its page, and the page links back into each lens — jump to the grid at the next
+occurrence, open the folder in the browser, open the board card. In the media
+browser, an **ownership badge** on folders/files tells what each one *is* and links
+to its page, so the filetree never feels like a bare SFTP view.
+
+Shows come first; **broadcasters, rotation pools, recordings/sessions and
+contributions** get the same hub treatment over time.
+
+### 5.5 Upcoming & quick metadata editing
 
 A dedicated lightweight flow — usable on mobile — to edit what the audience sees now
 and next: enrich a recurring show's announcement when the episode arrives, fix the
@@ -573,7 +601,7 @@ currently-aired metadata, with automatic revert-to-generic after the slot (and
 echoes) have played. This feeds OndePlayer's Upcoming display through AzuraCast
 (phase 1) and natively later.
 
-### 5.5 Live broadcasting management
+### 5.6 Live broadcasting management
 
 Plan live slots for both broadcaster types without dummy playlists; expose external
 broadcasters' slots and self-service page (Icecast-credentials auth); anticipate a
@@ -586,13 +614,13 @@ overlapping planned slot and pushes that slot's metadata as now-playing.
 on an unexpected situation; external broadcasters are framed by their slots yet with
 flexibility; late starts and early ends fall back to rotation, never to silence.
 
-### 5.6 OndePi boxes
+### 5.7 OndePi boxes
 
 OndePi boxes are first-class live sources: minimal-interface ("3 buttons") streaming
 boxes used in the field. Their integration dissolves today's hacks structurally:
 planned sessions are ordinary live slots (no dummy playlists — several planned
 sessions for the same box coexist naturally in Upcoming), and the slot-aware
-metadata matching of §5.5 replaces the Comment-field juggling.
+metadata matching of §5.6 replaces the Comment-field juggling.
 
 The human flow goes through a **QR-to-phone session page**: each box carries a
 printed QR embedding a box-scoped secret token — no login, field-proof, revocable by
@@ -612,7 +640,7 @@ pre-show checks — this requires work on the OndePi side as part of its integra
 into the galaxy; stream-status alone (live/idle per account via AzuraCast SSE) is
 available from phase 1 without touching OndePi.
 
-### 5.7 Replays & live recordings
+### 5.8 Replays & live recordings
 
 Live streams are auto-recorded (as today) and processed **automatically after each
 session ends** (replacing the current cron + manual script), with a review step
@@ -646,13 +674,13 @@ Slot-attributed recordings are also the natural source for **echo-of-live**
 rebroadcasts (§4.2). This whole pipeline is a candidate for early in-house transfer
 in phase 2.
 
-### 5.8 Rotation & inserts management
+### 5.9 Rotation & inserts management
 
 Manage pools, rules and lifecycle per §4.7; visualize rotation presence in the grid.
 The same panel manages **insert rules** (§4.8) — jingles, spoken-word inserts, night
 mixes — including pinning a specific mix on a specific night.
 
-### 5.9 Broadcaster account management
+### 5.10 Broadcaster account management
 
 A phase-1 requirement: OndeStudio centralizes broadcaster account management,
 replacing today's manual double-edit. One broadcaster definition fans out to **both
@@ -722,7 +750,7 @@ manually recreated during adoption. No migration tooling is built.
 **Phase-1 exit bar** (what makes the team switch): the **grid** replaces the
 spreadsheet, the **board** replaces Wekan, **write-back works** — decisions in
 OndeStudio genuinely reach AzuraCast — and **broadcaster account management** is
-centralized with its main/test fan-out (§5.9). A partial tool would just be a fourth
+centralized with its main/test fan-out (§5.10). A partial tool would just be a fourth
 thing to keep in sync.
 
 ### Phase 2 — Progressive takeover
@@ -857,7 +885,7 @@ Tracked here so the document stays honest; each names where it gets resolved.
    layout/conventions are designed from scratch and validated with the team →
    dedicated design session (§10).
 7. **Replay encoding** — investigate whether the opus no-duration bug in the web
-   player is fixable at muxing level; otherwise switch the pipeline to mp3 (§5.7) →
+   player is fixable at muxing level; otherwise switch the pipeline to mp3 (§5.8) →
    technical investigation (§10).
 
 ---
@@ -871,9 +899,9 @@ The path from this document to running software:
    and update* (playlists, schedule items, streamer accounts, metadata pushes,
    webhooks) — phase 1's write-back feasibility rests on it.
 2. **`docs/2-implementation_plan.md`.** Front-first prototype plan (grid ergonomics
-   are the core risk), media-browser UX design (§5.3), API design, module boundaries
-   honoring the phase-2 takeover, data model from §4, runtime decision (open
-   question 1).
+   are the core risk), media-browser and object-pages UX design (§5.3, §5.4), API
+   design, module boundaries honoring the phase-2 takeover, data model from §4,
+   runtime decision (open question 1).
 3. **Media storage layout design session.** Interactive, like the sessions that
    produced this document; ends with team-validated storage conventions (open
    question 6).
