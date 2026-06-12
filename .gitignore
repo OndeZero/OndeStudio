@@ -1,0 +1,15 @@
+# Secrets — never commit credentials
+.env
+.env.*
+!.env.example
+*.secret
+secrets.env
+
+# Node / build artifacts (future-proofing)
+node_modules/
+dist/
+build/
+
+# Editor / OS noise
+.DS_Store
+*.swp
