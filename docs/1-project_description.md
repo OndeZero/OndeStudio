@@ -1,6 +1,6 @@
 # OndeStudio — Project Description
 
-> **Status:** living document — v2.3, 2026-06-12
+> **Status:** living document — v2.4, 2026-06-12
 > **Nature:** contexts / goals / guidelines — the bridge between the team's ideas and
 > needs on one side, and implementation decisions on the other. This is *not* an
 > implementation plan; that will be a separate document (`docs/2-…`) informed by this
@@ -497,12 +497,17 @@ architecture — **"filetree-first + active conventions"**:
   will air. (Today's AzuraCast folder→playlist feeding forces the team to delete the
   previous episode when adding a new one to be sure the right one plays.)
 
-**App ↔ disk legibility.** The physical tree must mirror the app's logical
-organization: someone who mostly works in OndeStudio and occasionally accesses the
-same tree over **bare SFTP** should find their way immediately — same grouping, same
-naming logic as the app's library and pages. The disk layout is not an internal
-storage format; it is a first-class user interface, and a hard constraint on the
-layout redesign below.
+**App ↔ disk legibility — bounded.** The physical tree must mirror the app's
+**content typology and object organization** — shows, pools, content categories:
+what a file *is* and which object owns it — so that someone who mostly works in
+OndeStudio and occasionally accesses the same tree over **bare SFTP** finds their way
+immediately, with the same grouping and naming logic as the app's library and pages.
+It deliberately does **not** mirror the scheduling and editorial layer: slots, times,
+states and discussions live in the database only, and no over-complex nested
+architecture should be invented to encode them on disk. The disk reflects *what
+content is*; the app orchestrates *when and how it airs*. Within that boundary, the
+disk layout is a first-class user interface and a hard constraint on the layout
+redesign below.
 
 The **layout itself will be redesigned from scratch** — the current tree
 (`[SHOWS]/[Name]/`, `[1SHOT]`, `[MIXS]`, `[TRACKS]`, `00 -` zones) is inspiration,
@@ -596,7 +601,7 @@ its page, and the page links back into each lens — jump to the grid at the nex
 occurrence, open the folder in the browser, open the board card. In the media
 browser, an **ownership badge** on folders/files tells what each one *is* and links
 to its page. The familiarity works both ways: because the disk conventions mirror
-the app's logical organization (§4.11), a team member used to OndeStudio still finds
+the app's content typology (§4.11), a team member used to OndeStudio still finds
 their way instantly when accessing the same tree over bare SFTP.
 
 Shows come first; **broadcasters, rotation pools, recordings/sessions and
