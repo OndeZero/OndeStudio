@@ -1,6 +1,6 @@
 # OndeStudio — Project Description
 
-> **Status:** living document — v1.3, 2026-06-12 (discussion cycle + full AzuraCast scan)
+> **Status:** living document — v1.4, 2026-06-12
 > **Nature:** contexts / goals / guidelines. This is *not* an implementation plan;
 > implementation planning will be a separate document informed by this one.
 
@@ -254,7 +254,9 @@ primary editing surface (create, move, negotiate, validate).
   episode metadata when content arrives; reverts to generic after broadcast.
 - **Opportunistic recorded series** — we receive a finite set of episodes (e.g. 4) and
   schedule them on recurring (or ad-hoc) slots for the duration of the set (e.g. one per
-  week for 4 weeks). Each occurrence is individually movable.
+  week for 4 weeks). Each occurrence is individually movable. Both this and the
+  recurring show slot are fed by the same **episode queue** mechanism (§4.6) — only
+  the queue depth differs.
 - **Echo slot** — a second broadcast of the same episode (e.g. episode aired Tuesday
   14:00, echoed Saturday 15:00). By default follows the original week after week, but
   each occurrence is individually movable. Metadata stays synced with the original.
@@ -344,6 +346,17 @@ A **show** is the recurring editorial entity (name, identity, slot bindings); an
 recurring shows with just-in-time delivery, each show has a **fallback policy** for the
 no-new-episode case — `discard the slot` or `replay previous episode` — set as a
 per-show default and overridable for any specific week.
+
+**Episode queue.** A show with recurring slots can be matched to a **drop folder**:
+episodes landing there (the initial batch or later arrivals) form a queue, ordered by
+arrival and manually reorderable. Upcoming slot occurrences consume the queue
+automatically: a new episode fills the **nearest empty occurrence** (including the
+current week's if still empty), its content state flips from `empty` to
+`received`/`ready` without anyone touching the grid, and echo slots inherit. When the
+queue runs dry, the fallback policy applies. A **per-show trust setting** decides
+whether auto-fed episodes air directly or are flagged for a quick review before
+`ready`. This one mechanism serves both the opportunistic rec'd series (deep, finite
+queue) and the just-in-time recurring show (queue depth ~1).
 
 ### 4.7 Metadata model
 
@@ -442,6 +455,13 @@ Monday** (the primary working view — full states, drag & drop, slot creation) 
 **3-day rolling** (detail view centered on today, comfortable on mobile and for
 last-minute operations).
 
+Slots are directly manipulable — **drag, drop, resize**, quick-edit — and their
+rendering carries scheduling truth: the **booked frame** shows the reserved duration,
+while an inner **fill shows the actual content length** once populated — an under-run
+is a visible gap rotation will cover, an over-run raises an **overlap indicator**
+against the next slot (soft-boundary semantics, §4.9). All of this remains editable
+on mobile, even where less comfortable than desktop.
+
 ### 5.2 Discussion board
 
 Team-internal collaborative board: cards for contributions, slot proposals, ideas and
@@ -455,7 +475,8 @@ action. Fresh design — explicitly *not* bound by the current Wekan structure.
 The content library tracks every piece of content with its pipeline state and content
 state (per §4.3/§4.4). Manual intake first (file + minimal meta), drop-tool integration
 later (the design reserves the entry point). Placement assigns content to destinations:
-rotation pools, night pool, slots/series.
+rotation pools, night pool, slots/series. Shows expose their **drop folders** feeding
+the episode queue (§4.6) — for episodic content, placing a file *is* the intake.
 
 ### 5.4 Upcoming & quick metadata editing
 
@@ -671,11 +692,17 @@ Orientations, not final decisions — finalized in the implementation plan.
 
 ---
 
-## 8. Design guidelines
+## 8. Design & development guidelines
+
+### 8.1 Product & UI
 
 - **Clean, ergonomic, responsive.** Desktop is the primary workplace for heavy
   operations (grid manipulation); quick flows (metadata fixes, state changes,
   discussions) must work well on mobile.
+- **Visual identity: dark, retrofuturist, sustainable.** The primary theme is dark,
+  blending **retrofuturism** with **sustainable web design** principles (lightweight
+  pages, minimal assets, low-energy rendering). The UI is **themable** from the
+  start — the primary theme is one theme among future ones, not hardcoded.
 - **States visible at a glance.** The grid's first job is to make problems visible:
   validated-but-empty slots, stale metadata, pending negotiations.
 - **Right-depth access.** Both the full flow (schedule a show end-to-end) and the
@@ -694,6 +721,20 @@ Orientations, not final decisions — finalized in the implementation plan.
   scheduling conversations show the translated local time alongside the station time.
 - **Don't recreate Wekan.** The board serves the radio's objects (contributions, slots,
   shows); it is not a generic kanban.
+
+### 8.2 Development
+
+- **Prototype the front first.** Design, layout, workflow and ergonomics are
+  validated through front-office prototypes before investing heavily in the
+  back/server machinery — the grid's feel is the product's core risk, not the
+  database.
+- **API-first, alongside the front office.** A complete, documented API is built
+  together with the front (which consumes it), so that interaction from external
+  scripts and applications is designed into the architecture rather than bolted on
+  afterwards. OndePlayer, the drop tool and OndePi are the first external consumers.
+- **FOSS standards and spirit.** The architecture is modular and properly layered,
+  easy to read, understand and modify by external contributors: good documentation,
+  meaningful code commenting, conventional open-source project hygiene.
 
 ---
 
