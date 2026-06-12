@@ -1,6 +1,6 @@
 # OndeStudio — Project Description
 
-> **Status:** living document — v2.0, 2026-06-12 (structural pass)
+> **Status:** living document — v2.1, 2026-06-12
 > **Nature:** contexts / goals / guidelines — the bridge between the team's ideas and
 > needs on one side, and implementation decisions on the other. This is *not* an
 > implementation plan; that will be a separate document (`docs/2-…`) informed by this
@@ -502,6 +502,9 @@ The **layout itself will be redesigned from scratch** — the current tree
 not a design guide; the redesign includes a proper **staging zone** (the intended
 `00 - STOCK` was never really adopted) and requires explicit team validation (§9).
 
+In the app, the filetree is browsed and manipulated through the **media browser**
+(§5.3), a major UI surface alongside the grid.
+
 ---
 
 ## 5. Functional description
@@ -544,7 +547,7 @@ deserves airtime), todo/done tracking. Cards link to the domain objects they dis
 (a contribution, a show, a slot) so the discussion and the decision live next to the
 action. Fresh design — explicitly *not* bound by the current Wekan structure.
 
-### 5.3 Content intake & library
+### 5.3 Content intake, library & media browser
 
 The content library tracks every piece of content with its pipeline state and content
 state (§4.4, §4.6). Manual intake first (file + minimal meta), drop-tool integration
@@ -552,6 +555,15 @@ later (the design reserves the entry point). Placement assigns content to
 destinations: rotation pools, night pool, slots/series. Shows expose their **drop
 folders** feeding the episode queue (§4.5) — for episodic content, placing a file
 *is* the intake.
+
+**Media browser.** Since media storage is a primary entry point (§4.11), OndeStudio
+ships a **file/media browser alongside the grid** as a major UI surface: browse the
+canonical filetree and manipulate files easily — upload, move, rename, delete,
+organize — like AzuraCast's media manager, but with a better, more ergonomic UX. The
+browser surfaces the §4.11 mechanics (fingerprint identity, duplicate warnings,
+convention hints when a file sits outside its expected place) and links each file to
+its domain objects (show, episode, pool, slot). Its detailed UX design is deferred to
+the implementation phase.
 
 ### 5.4 Upcoming & quick metadata editing
 
@@ -859,8 +871,9 @@ The path from this document to running software:
    and update* (playlists, schedule items, streamer accounts, metadata pushes,
    webhooks) — phase 1's write-back feasibility rests on it.
 2. **`docs/2-implementation_plan.md`.** Front-first prototype plan (grid ergonomics
-   are the core risk), API design, module boundaries honoring the phase-2 takeover,
-   data model from §4, runtime decision (open question 1).
+   are the core risk), media-browser UX design (§5.3), API design, module boundaries
+   honoring the phase-2 takeover, data model from §4, runtime decision (open
+   question 1).
 3. **Media storage layout design session.** Interactive, like the sessions that
    produced this document; ends with team-validated storage conventions (open
    question 6).
