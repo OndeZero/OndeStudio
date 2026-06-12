@@ -1,6 +1,6 @@
 # OndeStudio — Project Description
 
-> **Status:** living document — v2.2, 2026-06-12
+> **Status:** living document — v2.3, 2026-06-12
 > **Nature:** contexts / goals / guidelines — the bridge between the team's ideas and
 > needs on one side, and implementation decisions on the other. This is *not* an
 > implementation plan; that will be a separate document (`docs/2-…`) informed by this
@@ -497,6 +497,13 @@ architecture — **"filetree-first + active conventions"**:
   will air. (Today's AzuraCast folder→playlist feeding forces the team to delete the
   previous episode when adding a new one to be sure the right one plays.)
 
+**App ↔ disk legibility.** The physical tree must mirror the app's logical
+organization: someone who mostly works in OndeStudio and occasionally accesses the
+same tree over **bare SFTP** should find their way immediately — same grouping, same
+naming logic as the app's library and pages. The disk layout is not an internal
+storage format; it is a first-class user interface, and a hard constraint on the
+layout redesign below.
+
 The **layout itself will be redesigned from scratch** — the current tree
 (`[SHOWS]/[Name]/`, `[1SHOT]`, `[MIXS]`, `[TRACKS]`, `00 -` zones) is inspiration,
 not a design guide; the redesign includes a proper **staging zone** (the intended
@@ -588,7 +595,9 @@ detail pane on the other; the same page is also URL-addressable full-screen.
 its page, and the page links back into each lens — jump to the grid at the next
 occurrence, open the folder in the browser, open the board card. In the media
 browser, an **ownership badge** on folders/files tells what each one *is* and links
-to its page, so the filetree never feels like a bare SFTP view.
+to its page. The familiarity works both ways: because the disk conventions mirror
+the app's logical organization (§4.11), a team member used to OndeStudio still finds
+their way instantly when accessing the same tree over bare SFTP.
 
 Shows come first; **broadcasters, rotation pools, recordings/sessions and
 contributions** get the same hub treatment over time.
