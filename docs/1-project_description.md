@@ -1,6 +1,6 @@
 # OndeStudio — Project Description
 
-> **Status:** living document — v2.6, 2026-06-16
+> **Status:** living document — v2.7, 2026-06-16
 > **Nature:** contexts / goals / guidelines — the bridge between the team's ideas and
 > needs on one side, and implementation decisions on the other. This is *not* an
 > implementation plan; that will be a separate document (`docs/2-…`) informed by this
@@ -302,6 +302,7 @@ structure the UI, the data model and the API, whatever the implementation. Index
 | Fingerprint | audio content hash; identity that survives manual file operations | 4.11 |
 | Access & identity | team (full) vs external (own slots, Icecast creds); reuse AzuraCast auth | 4.12 |
 | Assignment | one or more responsible members per object; basis for notifications | 4.13 |
+| Discussion card | thread anchored to an object or standalone; intent + votes + outcome | 4.14 |
 
 ### 4.1 Schedule grid
 
@@ -543,6 +544,31 @@ directed attention ("*your* slot needs content"). The model starts minimal (an
 assignee field on the core objects) but is designed in from the start, so every
 object has someone a notification can address.
 
+### 4.14 Discussion cards
+
+A **card** is a discussion thread carrying a status, votes and assignees — the unit of
+the board (§5.2). The board is not a parallel universe of items (the Wekan trap): a
+card is either
+
+- **anchored** to a domain object — a show, slot or contribution — in which case the
+  same thread also appears on that object's hub page (§5.4); or
+- **standalone** — no object yet.
+
+Every card has an **intent**: `discussion`, `idea`, `prospection` (an artist to dig
+into, a person to contact…), or `task`. Intent is orthogonal to anchoring — a "general
+discussion" is simply an unanchored `discussion`.
+
+A card moves through one **status** lane that serves both talk and tasks:
+`open → in progress → decided/done → archived`. When a discussion concludes, its
+**outcome** is recorded explicitly — rather than buried in the thread — and the
+outcome can spawn an action (create the slot, assign someone).
+
+**Promotion** is the continuity mechanism: an `idea` or `prospection` card can be
+**promoted** into a real object (slot, show, contribution), re-anchoring the card to
+it and carrying the whole thread along — so the conversation that led to booking an
+artist stays attached to the slot it produced. Cards feed assignment (§4.13) and
+notifications (§5.12).
+
 ---
 
 ## 5. Functional description
@@ -579,22 +605,30 @@ on mobile, even where less comfortable than desktop.
 
 ### 5.2 Discussion board
 
-Team-internal collaborative board, fresh design — explicitly *not* bound by the
-current Wekan structure. It hosts discussion across several **surfaces**: a specific
-show, slot, or piece of content (whether or not it is booked yet), plus
-object-independent cards for general discussion, ideas, and **prospection** (artists
-to dig into, people to contact…). Todo/done tracking runs throughout.
+The board is the **process lens** (§5.4) over discussion cards (§4.14): one surface
+where every thread — anchored to a show/slot/content or standalone — surfaces, gets
+triaged, voted and tracked. Fresh design, explicitly *not* a Wekan clone; team-internal
+(§3.2).
 
-Each card is built for **at-a-glance legibility**: its subject and the state of its
-discussion (e.g. latest replies) are graspable without opening it; a **lightweight
-vote** (a small set of emoji) gauges team feeling; a click expands the full detail and
-history. Cards link to the domain objects they discuss so discussion and decision live
-next to the action, and they connect to assignment (§4.13) and the object lenses
-(§5.4).
+**One board, pivotable.** Rather than fixed columns or a flat feed, the board groups
+by workflow status by default, with a single **group-by switch** (status / intent /
+assignee) and a **sort toggle** — by votes ("what does the team most want on air?") or
+by recent activity ("what's hot, what's gone stale"). One surface, re-pivoted, in the
+spirit of few views and few clicks.
 
-The detailed mechanics — exact card taxonomy, the emoji vote set, todo/done
-semantics, how a prospection card graduates into a booked slot — are a dedicated
-design session (§10).
+**At-a-glance cards.** Each card face shows its subject, an intent badge and (when
+anchored) a chip to its object, the vote tally, assignee(s), status, and a
+**discussion-state indicator** — last-reply time, reply count, an unread dot, and a
+one-line snippet of the latest reply — so the state of a conversation is graspable
+without opening it. A click expands the full thread and history.
+
+**Voting** uses a small fixed emoji set with defined meanings — proposed 👍 want-on-air
+/ 🔥 love / 🤔 needs-discussion / 👎 no, tunable in build — one vote per person per
+card, changeable; the tally optionally drives the sort.
+
+Because cards are anchored to real objects and can be **promoted** from idea or
+prospection into a booked slot (§4.14), the board never drifts away from the schedule
+it discusses — the failure mode of the current Wekan workflow.
 
 ### 5.3 Content intake, library & media browser
 
@@ -1028,10 +1062,8 @@ The path from this document to running software:
    two-increment front-first plan (grid ergonomics are the core risk), media-browser
    and object-pages UX design (§5.3, §5.4), API design, module boundaries honoring the
    phase-2 takeover, data model from §4, runtime decision (open question 1).
-3. **Discussion-board design session.** Interactive: card taxonomy, emoji vote set,
-   todo/done semantics, prospection→slot graduation (§5.2).
-4. **Media storage layout design session.** Interactive, like the sessions that
+3. **Media storage layout design session.** Interactive, like the sessions that
    produced this document; ends with team-validated storage conventions (open
    question 6).
-5. **Replay encoding investigation.** Opus muxing fix vs mp3 switch (open
+4. **Replay encoding investigation.** Opus muxing fix vs mp3 switch (open
    question 7).
