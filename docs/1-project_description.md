@@ -1,6 +1,6 @@
 # OndeStudio — Project Description
 
-> **Status:** living document — v2.7, 2026-06-16
+> **Status:** living document — v2.8, 2026-06-16
 > **Nature:** contexts / goals / guidelines — the bridge between the team's ideas and
 > needs on one side, and implementation decisions on the other. This is *not* an
 > implementation plan; that will be a separate document (`docs/2-…`) informed by this
@@ -9,9 +9,9 @@
 > **How to read.** §2 describes the world as it is today. §3 states what OndeStudio
 > must and must not be. §4 defines the domain vocabulary — these concepts are
 > normative: the implementation must honor them. §5 walks through the functional
-> areas. §6 sets the three-phase architecture strategy and its synchronization rules.
-> §7 and §8 give technology orientations and design/development guidelines. §9 lists
-> what is intentionally still open; §10 the concrete next steps.
+> areas. §6 sets the three-phase architecture strategy, its synchronization rules and
+> the MVP boundary. §7 gives technology and API orientations; §8 the design/development
+> guidelines. §9 lists what is intentionally still open; §10 the concrete next steps.
 
 ---
 
@@ -949,9 +949,11 @@ assumptions.
 
 ---
 
-## 7. Technology orientation
+## 7. Technology & API orientation
 
 Orientations, not final decisions — finalized in the implementation plan.
+
+### 7.1 Stack & deployment
 
 - **Language: TypeScript** across backend and frontend.
 - **Runtime: open question** — Bun (already proven in production with OndePlayer,
@@ -978,6 +980,52 @@ Orientations, not final decisions — finalized in the implementation plan.
   by proxying login to AzuraCast or importing accounts — so the team has one identity
   (§4.12). The team/external split maps onto existing AzuraCast roles and Icecast
   streamer credentials.
+
+### 7.2 API resource model (sketch)
+
+API-first (§8.2): the contract is designed *with* the front, not after it. **REST/JSON
+over HTTP**, versioned (`/api/v1`), **OpenAPI-documented**; **SSE** for realtime (grid,
+board, on-air); auth via the AzuraCast-backed identity (§4.12). The API exposes
+**OndeStudio's own model only** — AzuraCast sits behind it as an internal integration
+detail (§6), never leaked to consumers — which is precisely what lets OndePlayer move
+off AzuraCast's API onto this one. Resources are **station-scoped** from day 1 (e.g.
+`/stations/{id}/…`) as cheap phase-3 multi-station insurance (today: `oz`, with
+`wz-test` as its test mirror). Resource names below are provisional, pending the naming
+pass (§9).
+
+Top-level resources, grouped:
+
+- **Scheduling** — `shows`, `episodes`, `slots`, `rotation-pools`, `insert-rules`.
+- **Content** — `media` (fingerprinted files + filetree), `contributions`, `sessions`
+  (live recordings → replays).
+- **Collaboration** — `cards` (with nested `comments` and `votes`), `notifications`.
+- **People & access** — `users`, `broadcasters` (the main/test fan-out accounts),
+  `tags`.
+- **Devices** — `boxes` (OndePi heartbeat and QR session tokens).
+- **Operational & public read** — `schedule` (the computed grid over a date range) and
+  `now` (on-air state).
+
+**Recurrence — definition + occurrences.** A recurring `slot` is a **definition** (a
+recurrence rule bound to a show, live, echo…); the grid materializes individually
+addressable **occurrences**. Editing one occurrence (move an echo, shift a week, attach
+an episode) records a per-instance **exception** without breaking the series — the
+calendar-app model. Occurrences carry per-instance content state (§4.4) and are what
+the episode queue fills (§4.5); an echo is an occurrence linked to an origin occurrence
+with synced metadata.
+
+**Key relationships.** A `show` owns its `episodes`, its slot `definition`(s) and a
+`media` drop-folder; an `episode` airs on one origin occurrence plus echo occurrences;
+a `contribution` resolves to `media` and is placed onto a `rotation-pool`, the night
+pool, or a `slot`; a `session` is reconstructed from recordings, attributed to a live
+occurrence, and may become a replay; a `card` anchors to any of these (or stands
+alone) and can be promoted into one (§4.14); `assignment` and `notifications` reference
+any object by type + id.
+
+**The galaxy seam.** `schedule` and `now` are the **stable public read contract** the
+satellites consume: OndePlayer switches its Upcoming / now-playing source here at
+write-back (§6), and the drop tool (later) writes `contributions`. Designing these as
+first-class public API — not internal front-only routes — is what makes the §8.2
+"API-first" principle concrete.
 
 ---
 
@@ -1060,8 +1108,9 @@ The path from this document to running software:
    webhooks) — phase 1's write-back feasibility rests on it.
 2. **`docs/2-implementation_plan.md`.** Built around the MVP boundary (§6): the
    two-increment front-first plan (grid ergonomics are the core risk), media-browser
-   and object-pages UX design (§5.3, §5.4), API design, module boundaries honoring the
-   phase-2 takeover, data model from §4, runtime decision (open question 1).
+   and object-pages UX design (§5.3, §5.4), API design (from the §7.2 resource sketch),
+   module boundaries honoring the phase-2 takeover, data model from §4, runtime
+   decision (open question 1).
 3. **Media storage layout design session.** Interactive, like the sessions that
    produced this document; ends with team-validated storage conventions (open
    question 6).
