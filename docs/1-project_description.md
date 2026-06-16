@@ -1102,10 +1102,10 @@ Tracked here so the document stays honest; each names where it gets resolved.
 
 The path from this document to running software:
 
-1. **AzuraCast write-capability audit.** The 2026-06 scan covered the read side;
-   before the implementation plan, verify what the 0.23.3 API can reliably *create
-   and update* (playlists, schedule items, streamer accounts, metadata pushes,
-   webhooks) — phase 1's write-back feasibility rests on it.
+1. **AzuraCast write-capability audit.** ✅ Done 2026-06-16 (`wz-test` only) —
+   playlist and streamer create/update/delete, `schedule_items`, and
+   description/comments tagging all confirmed working; phase-1 write-back is viable.
+   Findings: [`docs/azuracast-write-audit.md`](azuracast-write-audit.md).
 2. **`docs/2-implementation_plan.md`.** Built around the MVP boundary (§6): the
    two-increment front-first plan (grid ergonomics are the core risk), media-browser
    and object-pages UX design (§5.3, §5.4), API design (from the §7.2 resource sketch),
