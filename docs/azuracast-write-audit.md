@@ -52,13 +52,23 @@ Written as part of the parent playlist/streamer `PUT`, as an array of
 
 This is what makes grid slots writable to AzuraCast in phase-1 increment 2.
 
+### Media → playlist assignment (the episode-queue requirement)
+
+`PUT /api/station/{station}/file/{id}` with `{"playlists":[{"id":…}, …]}` →
+**200, assignment persists.** Verified: a media file's playlist membership can be set
+deterministically (added file to a throwaway playlist, the playlist's song count
+updated, then restored the file to its exact original membership). **This is what the
+MVP episode queue needs** — placing a *specific* episode into a *specific* scheduled
+playlist via API, instead of relying on AzuraCast's buggy folder→playlist auto-fill.
+
 ## Not tested here (deliberately)
 
 - **Now-playing metadata push** (live-meta-sync): not re-tested — it would touch the
   test stream, and the mechanism is **already proven in production** by OndePlayer's
   `live-meta-sync`. No risk to phase-1 feasibility.
-- **Media write ops** (upload / move / delete files): not tested — a **phase-2**
-  concern (§4.11), not part of the phase-1 overlay.
+- **Media file write ops** (upload / move / delete actual files): not tested — a
+  **phase-2** concern (§4.11) when OndeStudio takes over the filetree. (Assigning
+  *existing* media to playlists — the phase-1 need — *is* covered above.)
 
 ## Notes for the implementation plan
 
