@@ -1,6 +1,6 @@
 # OndeStudio — Project Description
 
-> **Status:** living document — v2.4, 2026-06-12
+> **Status:** living document — v2.5, 2026-06-16
 > **Nature:** contexts / goals / guidelines — the bridge between the team's ideas and
 > needs on one side, and implementation decisions on the other. This is *not* an
 > implementation plan; that will be a separate document (`docs/2-…`) informed by this
@@ -300,6 +300,8 @@ structure the UI, the data model and the API, whatever the implementation. Index
 | Broadcaster / session | live source (team or external) / one actual continuous live | 4.9 |
 | Tags | shared labels; double as lightweight event grouping | 4.10 |
 | Fingerprint | audio content hash; identity that survives manual file operations | 4.11 |
+| Access & identity | team (full) vs external (own slots, Icecast creds); reuse AzuraCast auth | 4.12 |
+| Assignment | one or more responsible members per object; basis for notifications | 4.13 |
 
 ### 4.1 Schedule grid
 
@@ -517,6 +519,30 @@ not a design guide; the redesign includes a proper **staging zone** (the intende
 In the app, the filetree is browsed and manipulated through the **media browser**
 (§5.3), a major UI surface alongside the grid.
 
+### 4.12 Access & identity
+
+OndeStudio reuses **AzuraCast accounts** rather than maintaining a parallel user
+store — by proxying authentication to AzuraCast or importing accounts (§7) — so the
+team keeps one identity. Two access levels for now:
+
+- **Team** — full access to the whole interface (grid, content, board, settings). The
+  4–6 core members; every team member is fully trusted.
+- **External broadcaster** — restricted: authenticates with their existing Icecast
+  credentials, reaches only their own slots and show metadata through the
+  self-service page (§4.9, §5.6).
+
+A finer split *inside* the team level — separating general/technical settings from
+day-to-day operation — is anticipated but deliberately deferred (§8.1).
+
+### 4.13 Assignment & ownership
+
+Any object — a contribution, show, slot, episode or board card — can carry one or
+more **assignees**: team members responsible for it. Assignment is the backbone of
+awareness (§5.12): it turns impersonal state ("slot validated but empty") into
+directed attention ("*your* slot needs content"). The model starts minimal (an
+assignee field on the core objects) but is designed in from the start, so every
+object has someone a notification can address.
+
 ---
 
 ## 5. Functional description
@@ -553,11 +579,22 @@ on mobile, even where less comfortable than desktop.
 
 ### 5.2 Discussion board
 
-Team-internal collaborative board: cards for contributions, slot proposals, ideas and
-tasks; labels, comments, votes (stack-overflow-style discuss-and-vote on what
-deserves airtime), todo/done tracking. Cards link to the domain objects they discuss
-(a contribution, a show, a slot) so the discussion and the decision live next to the
-action. Fresh design — explicitly *not* bound by the current Wekan structure.
+Team-internal collaborative board, fresh design — explicitly *not* bound by the
+current Wekan structure. It hosts discussion across several **surfaces**: a specific
+show, slot, or piece of content (whether or not it is booked yet), plus
+object-independent cards for general discussion, ideas, and **prospection** (artists
+to dig into, people to contact…). Todo/done tracking runs throughout.
+
+Each card is built for **at-a-glance legibility**: its subject and the state of its
+discussion (e.g. latest replies) are graspable without opening it; a **lightweight
+vote** (a small set of emoji) gauges team feeling; a click expands the full detail and
+history. Cards link to the domain objects they discuss so discussion and decision live
+next to the action, and they connect to assignment (§4.13) and the object lenses
+(§5.4).
+
+The detailed mechanics — exact card taxonomy, the emoji vote set, todo/done
+semantics, how a prospection card graduates into a booked slot — are a dedicated
+design session (§10).
 
 ### 5.3 Content intake, library & media browser
 
@@ -704,6 +741,25 @@ validate their setup against the test station without restriction, then go live 
 the main station at the scheduled time by changing only the port (8005 instead of
 8015).
 
+### 5.11 Operational / on-air view
+
+A view distinct from the planning grid, answering "**what is happening on air right
+now?**": the current track or show, what comes next, whether a live source is
+connected, and any problem demanding immediate attention (a validated slot about to
+air empty, a live that hasn't connected, a flagged file in the next hour). Where the
+grid is for planning and negotiation, this is the live-ops dashboard for whoever is on
+duty — lightweight and glanceable, mobile included.
+
+### 5.12 Notifications & awareness
+
+For a small, asynchronous team, the system surfaces what needs attention instead of
+relying on people to notice. Notifications are driven by **assignment** (§4.13) and
+**state** (§4.4): a validated slot still empty as its air date nears, content that
+arrived but isn't processed, an object moved or edited by someone else, a mention or a
+new assignment. The first cut is intentionally small — a handful of high-value
+triggers and an in-app inbox — but every object is built assignment- and state-aware
+so the trigger set can grow without retrofitting.
+
 ---
 
 ## 6. Architecture strategy
@@ -725,6 +781,13 @@ directions:
 OndeStudio maintains its own database for everything AzuraCast cannot represent
 (negotiation states, discussions, votes, content pipeline, fallback policies…) and
 treats AzuraCast as the source of truth for playout reality.
+
+**Air keeps running without OndeStudio.** Because phase 1 is an overlay, OndeStudio is
+never in the playout hot path: if it is down, AzuraCast (Liquidsoap + Icecast) keeps
+the station on air exactly as before. OndeStudio drives and mirrors AzuraCast; it does
+not host the stream. This decoupling is a deliberate safety property of phases 1–2 and
+only changes in phase 3, when OndeStudio takes over playout and must itself meet that
+availability bar.
 
 **Ownership model.** Every shared object falls into one of three classes:
 
@@ -833,6 +896,10 @@ Orientations, not final decisions — finalized in the implementation plan.
   (global-admin role, also used by OndePlayer). When OndeStudio begins writing to
   AzuraCast, it gets a **dedicated account** — clean audit trail, unambiguous
   ownership of tagged objects.
+- **Authentication**: reuse AzuraCast accounts rather than a parallel user store —
+  by proxying login to AzuraCast or importing accounts — so the team has one identity
+  (§4.12). The team/external split maps onto existing AzuraCast roles and Icecast
+  streamer credentials.
 
 ---
 
@@ -916,8 +983,10 @@ The path from this document to running software:
    are the core risk), media-browser and object-pages UX design (§5.3, §5.4), API
    design, module boundaries honoring the phase-2 takeover, data model from §4,
    runtime decision (open question 1).
-3. **Media storage layout design session.** Interactive, like the sessions that
+3. **Discussion-board design session.** Interactive: card taxonomy, emoji vote set,
+   todo/done semantics, prospection→slot graduation (§5.2).
+4. **Media storage layout design session.** Interactive, like the sessions that
    produced this document; ends with team-validated storage conventions (open
    question 6).
-4. **Replay encoding investigation.** Opus muxing fix vs mp3 switch (open
+5. **Replay encoding investigation.** Opus muxing fix vs mp3 switch (open
    question 7).
