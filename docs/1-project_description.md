@@ -1,6 +1,6 @@
 # OndeStudio — Project Description
 
-> **Status:** living document — v2.8, 2026-06-16
+> **Status:** living document — v2.9, 2026-06-16
 > **Nature:** contexts / goals / guidelines — the bridge between the team's ideas and
 > needs on one side, and implementation decisions on the other. This is *not* an
 > implementation plan; that will be a separate document (`docs/2-…`) informed by this
@@ -354,7 +354,10 @@ shorter or longer:
   broadcaster connects).
 
 Combined with the universal rotation fallback (§4.7), this is the exact inverse of
-LibreTime's rigidity (§2.4) and a **non-negotiable scheduling semantic**.
+LibreTime's rigidity (§2.4) and a **non-negotiable scheduling semantic**. In phase 1
+this behavior is whatever AzuraCast's scheduling + rotation fallback already provides
+(the team lives with it today); OndeStudio gains full control over it only when it
+takes over scheduling in phase 2 (§6).
 
 ### 4.4 States
 
@@ -517,14 +520,22 @@ The **layout itself will be redesigned from scratch** — the current tree
 not a design guide; the redesign includes a proper **staging zone** (the intended
 `00 - STOCK` was never really adopted) and requires explicit team validation (§9).
 
+**Phase-1 substrate.** In phase 1 the media layer *is* AzuraCast's: OndeStudio uses
+its files API and scanner (upload, list, assign files to playlists, index manual SFTP
+edits — all confirmed in the write audit) and overlays its own identity and state
+(fingerprints, content states) keyed to those files. OndeStudio takes over the
+filetree natively in phase 2 (§6). The filetree-first principles above are the target
+model; phase 1 honors them through AzuraCast's already-capable media management.
+
 In the app, the filetree is browsed and manipulated through the **media browser**
 (§5.3), a major UI surface alongside the grid.
 
 ### 4.12 Access & identity
 
-OndeStudio reuses **AzuraCast accounts** rather than maintaining a parallel user
-store — by proxying authentication to AzuraCast or importing accounts (§7) — so the
-team keeps one identity. Two access levels for now:
+OndeStudio **owns its own user/session store**, provisioned and synced from AzuraCast
+accounts (decided 2026-06-16; §7.1) — so the team keeps one identity while OndeStudio
+stays decoupled from AzuraCast and ready for phase 3 (when AzuraCast disappears but
+auth must remain). Two access levels for now:
 
 - **Team** — full access to the whole interface (grid, content, board, settings). The
   4–6 core members; every team member is fully trusted.
@@ -951,18 +962,17 @@ assumptions.
 
 ## 7. Technology & API orientation
 
-Orientations, not final decisions — finalized in the implementation plan.
+The stack is now **locked** (decided 2026-06-16); remaining open items are flagged.
 
 ### 7.1 Stack & deployment
 
 - **Language: TypeScript** across backend and frontend.
-- **Runtime: open question** — Bun (already proven in production with OndePlayer,
-  native TS, one runtime to operate) vs Node (most conservative ecosystem choice). To
-  be settled at implementation-plan time.
-- **Frontend: Vue 3 + Vite (recommended).** Rationale: AzuraCast's own UI is Vue,
-  which eases reading and porting its code during phases 2–3 and overlaps with its
-  contributor pool; the calendar/drag-and-drop ecosystem is mature; the learning
-  curve fits a small team. Presented as a recommendation, not a lock.
+- **Runtime: Bun.** Already proven in production on `onde-zero` (OndePlayer runs on
+  Bun), native TS, one runtime to operate; the conservative Node path was weighed and
+  set aside.
+- **Frontend: Vue 3 + Vite.** AzuraCast's own UI is Vue — which eases reading and
+  porting its code during phases 2–3 and overlaps with its contributor pool; the
+  calendar/drag-and-drop ecosystem is mature; the learning curve fits a small team.
 - **Database: SQLite first.** Zero-ops, fits a single-server 4–6-user deployment,
   already used by wavezero-form; trivial backups. Revisit only if multi-instance
   needs appear (phase 3 packaging may offer Postgres as an option).
@@ -976,10 +986,11 @@ Orientations, not final decisions — finalized in the implementation plan.
   (global-admin role, also used by OndePlayer). When OndeStudio begins writing to
   AzuraCast, it gets a **dedicated account** — clean audit trail, unambiguous
   ownership of tagged objects.
-- **Authentication**: reuse AzuraCast accounts rather than a parallel user store —
-  by proxying login to AzuraCast or importing accounts — so the team has one identity
-  (§4.12). The team/external split maps onto existing AzuraCast roles and Icecast
-  streamer credentials.
+- **Authentication**: **OndeStudio owns its own user/session store**, provisioned and
+  synced from AzuraCast accounts (not a live proxy) — decoupled, robust, and
+  phase-3-ready: auth survives when AzuraCast goes away. External broadcasters are
+  verified via their Icecast streamer credentials, which OndeStudio already manages
+  (§4.12).
 
 ### 7.2 API resource model (sketch)
 
@@ -1079,7 +1090,7 @@ first-class public API — not internal front-only routes — is what makes the 
 
 Tracked here so the document stays honest; each names where it gets resolved.
 
-1. **Runtime choice** (Bun vs Node) → implementation plan (§10).
+1. **Runtime choice** — ✅ resolved 2026-06-16: **Bun** (§7.1).
 2. **Drop-tool integration protocol** (push from wavezero-form vs pull from
    OndeStudio; when) → planning of the drop-integration phase.
 3. **WebDJ-equivalent scope** for external broadcasters (which phase, which tech) →
@@ -1109,8 +1120,9 @@ The path from this document to running software:
 2. **`docs/2-implementation_plan.md`.** Built around the MVP boundary (§6): the
    two-increment front-first plan (grid ergonomics are the core risk), media-browser
    and object-pages UX design (§5.3, §5.4), API design (from the §7.2 resource sketch),
-   module boundaries honoring the phase-2 takeover, data model from §4, runtime
-   decision (open question 1).
+   module boundaries honoring the phase-2 takeover, and the data model from §4. (Stack
+   is locked in §7.1: Bun, Vue 3 + Vite, SQLite; auth = OndeStudio-owned store synced
+   from AzuraCast; phase-1 media via AzuraCast's API + scanner.)
 3. **Media storage layout design session.** Interactive, like the sessions that
    produced this document; ends with team-validated storage conventions (open
    question 6).
