@@ -1,6 +1,6 @@
 # OndeStudio — Project Description
 
-> **Status:** living document — v2.5, 2026-06-16
+> **Status:** living document — v2.6, 2026-06-16
 > **Nature:** contexts / goals / guidelines — the bridge between the team's ideas and
 > needs on one side, and implementation decisions on the other. This is *not* an
 > implementation plan; that will be a separate document (`docs/2-…`) informed by this
@@ -649,8 +649,8 @@ contributions** get the same hub treatment over time.
 A dedicated lightweight flow — usable on mobile — to edit what the audience sees now
 and next: enrich a recurring show's announcement when the episode arrives, fix the
 currently-aired metadata, with automatic revert-to-generic after the slot (and
-echoes) have played. This feeds OndePlayer's Upcoming display through AzuraCast
-(phase 1) and natively later.
+echoes) have played. This feeds OndePlayer's Upcoming display — through AzuraCast at
+first, then directly from OndeStudio's API once phase-1 write-back lands (§6).
 
 ### 5.6 Live broadcasting management
 
@@ -830,6 +830,50 @@ OndeStudio genuinely reach AzuraCast — and **broadcaster account management** 
 centralized with its main/test fan-out (§5.10). A partial tool would just be a fourth
 thing to keep in sync.
 
+#### Phase 1 — first cut (the MVP)
+
+The MVP is the first usable slice of the overlay, drawn on one line: **OndeStudio
+overlays the layer humans touch daily — plan, announce, discuss, assign — and leaves
+everything AzuraCast *automates* (rotation internals, insert rules, recording/replays,
+OndePi flows) running untouched until each gets its own phase-2 takeover.** Those
+automated layers still appear in the grid, as **read-only** blocks and overlay bands:
+the team sees the whole day but edits only the human layer.
+
+**Two increments, front-first.** Increment 1 makes OndeStudio a *mirror* — the grid
+reads AzuraCast and overlays OndeStudio's own states, the board and assignment work,
+but the AzuraCast UI still performs the writes. This validates the grid's ergonomics
+(the product's core risk, §8.2) cheaply, with air untouched. Increment 2 turns the
+mirror into a *driver*: write-back, so decisions in OndeStudio reach AzuraCast — the
+ownership and drift rules above apply from here on.
+
+**In the MVP:**
+
+- team authentication via AzuraCast (§4.12);
+- the **week grid** with negotiation and content states (§4.4, §5.1);
+- **live slots** (retiring the dummy-playlist hack) and **recurring-show slots with
+  the episode queue** (§4.2, §4.5) — the drop-folder auto-fill that kills
+  stale-Upcoming is in the first cut;
+- the **show page** (hub) and a **basic media browser** (§5.3, §5.4);
+- **quick meta / Upcoming editing** (§5.5);
+- **broadcaster account management** with main/test fan-out (§5.10) — self-contained,
+  shippable early;
+- a **thin discussion board** with assignment and a handful of notification triggers
+  (§5.2, §4.13, §5.12).
+
+**Phase-1 fast-follow** (still overlay, after the MVP): month and 3-day grid zooms;
+echo slots; the operational/on-air view (§5.11); a fuller board and more notification
+triggers; drift-reconciliation polish.
+
+**Deferred to phase 2** (left running in AzuraCast meanwhile): rotation pool
+management, insert-rule editing and night-mix pinning, the replays/recordings
+overhaul, the OndePi QR page and heartbeat, echo-of-live, and drop-tool intake.
+
+**Upcoming feed.** When write-back lands, lives and shows reach the public Upcoming by
+**OndePlayer switching its schedule source to OndeStudio's API** — rather than
+perpetuating the announce-artifact inside AzuraCast. This is the first concrete step
+of OndePlayer's eventual absorption (§9) and the galaxy's first satellite
+coordination: small and contained, but real phase-1 work on OndePlayer.
+
 ### Phase 2 — Progressive takeover
 
 Features move in-house one by one (media library, scheduling logic, metadata
@@ -958,8 +1002,9 @@ Tracked here so the document stays honest; each names where it gets resolved.
    OndeStudio; when) → planning of the drop-integration phase.
 3. **WebDJ-equivalent scope** for external broadcasters (which phase, which tech) →
    later-phase planning.
-4. **OndePlayer absorption** — timing, and what "absorbed" means concretely (shared
-   schedule/meta backend first, UI merge later?) → phase-3 planning.
+4. **OndePlayer absorption** — the first step is decided (its Upcoming reads
+   OndeStudio's API once phase-1 write-back lands, §6); still open: full timing and
+   whether absorption ends in a UI merge → phase-3 planning.
 5. **Naming pass** — final vocabulary for slot types and states (this doc's terms are
    proposals) → before the implementation plan freezes the API.
 6. **Media storage layout redesign** (§4.11) — architecture is settled; the concrete
@@ -979,10 +1024,10 @@ The path from this document to running software:
    before the implementation plan, verify what the 0.23.3 API can reliably *create
    and update* (playlists, schedule items, streamer accounts, metadata pushes,
    webhooks) — phase 1's write-back feasibility rests on it.
-2. **`docs/2-implementation_plan.md`.** Front-first prototype plan (grid ergonomics
-   are the core risk), media-browser and object-pages UX design (§5.3, §5.4), API
-   design, module boundaries honoring the phase-2 takeover, data model from §4,
-   runtime decision (open question 1).
+2. **`docs/2-implementation_plan.md`.** Built around the MVP boundary (§6): the
+   two-increment front-first plan (grid ergonomics are the core risk), media-browser
+   and object-pages UX design (§5.3, §5.4), API design, module boundaries honoring the
+   phase-2 takeover, data model from §4, runtime decision (open question 1).
 3. **Discussion-board design session.** Interactive: card taxonomy, emoji vote set,
    todo/done semantics, prospection→slot graduation (§5.2).
 4. **Media storage layout design session.** Interactive, like the sessions that
