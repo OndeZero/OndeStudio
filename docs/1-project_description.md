@@ -1,6 +1,6 @@
 # OndeStudio — Project Description
 
-> **Status:** living document — v2.9, 2026-06-16
+> **Status:** living document — v2.10, 2026-06-17
 > **Nature:** contexts / goals / guidelines — the bridge between the team's ideas and
 > needs on one side, and implementation decisions on the other. This is *not* an
 > implementation plan; that will be a separate document (`docs/2-…`) informed by this
@@ -261,6 +261,10 @@ storage design that tolerates manual filetree management (§4.11).
    §8.1).
 6. **Progressive autonomy**: an architecture that starts as an AzuraCast overlay and
    ends as a standalone product (§6).
+7. **Welcoming to contributors — human and AI**: the codebase stays modular and
+   low-cognitive-load by design, so external peers and AI agents can grasp and extend
+   it without hitting a complexity wall. This is a first-class requirement, not a
+   nicety (§8.2).
 
 ### 3.2 Non-goals
 
@@ -1081,8 +1085,11 @@ first-class public API — not internal front-only routes — is what makes the 
   scripts and applications is designed into the architecture rather than bolted on
   afterwards. OndePlayer, the drop tool and OndePi are the first external consumers.
 - **FOSS standards and spirit.** The architecture is modular and properly layered,
-  easy to read, understand and modify by external contributors: good documentation,
-  meaningful code commenting, conventional open-source project hygiene.
+  easy to read, understand and modify by external contributors — human peers and AI
+  agents alike — following the spirit of projects like ZeroMQ (C4 / Social
+  Architecture): good documentation, meaningful code commenting, conventional
+  open-source project hygiene. **Low complexity is a hard constraint**: the overhaul
+  developer must never hit a complexity wall.
 
 ---
 
