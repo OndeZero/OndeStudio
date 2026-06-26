@@ -1,6 +1,6 @@
 # OndeStudio — Project Description
 
-> **Status:** living document — v2.10, 2026-06-17
+> **Status:** living document — v2.11, 2026-06-17
 > **Nature:** contexts / goals / guidelines — the bridge between the team's ideas and
 > needs on one side, and implementation decisions on the other. This is *not* an
 > implementation plan; that will be a separate document (`docs/2-…`) informed by this
@@ -370,14 +370,14 @@ Two orthogonal state families, both visible at a glance on the grid.
 **Negotiation state** — human-driven: where the slot stands in the team process.
 
 ```
-                ┌─→ declined
-pre-booked → in discussion → validated → (aired)
-                                 └─→ cancelled
+              ┌─→ declined
+pre-booked → dealing → validated → (aired)
+                       └─→ cancelled
 ```
 
 - `pre-booked` — a hold: the slot is penciled on the grid to reserve the space while
   things get sorted. Team-visible only.
-- `in discussion` — actively negotiated, linked to a discussion-board card.
+- `dealing` — actively negotiated, linked to a discussion-board card.
 - `validated` — confirmed. **Only validated slots reach the public Upcoming.**
 - `declined` — never got to yes; kept as a ghost for history.
 - `cancelled` — was validated, then called off (the public may have seen it
@@ -569,16 +569,16 @@ card is either
   same thread also appears on that object's hub page (§5.4); or
 - **standalone** — no object yet.
 
-Every card has an **intent**: `discussion`, `idea`, `prospection` (an artist to dig
+Every card has an **intent**: `discussion`, `idea`, `prospect` (an artist to dig
 into, a person to contact…), or `task`. Intent is orthogonal to anchoring — a "general
 discussion" is simply an unanchored `discussion`.
 
 A card moves through one **status** lane that serves both talk and tasks:
-`open → in progress → decided/done → archived`. When a discussion concludes, its
+`open → in progress → done → archived`. When a discussion concludes, its
 **outcome** is recorded explicitly — rather than buried in the thread — and the
 outcome can spawn an action (create the slot, assign someone).
 
-**Promotion** is the continuity mechanism: an `idea` or `prospection` card can be
+**Promotion** is the continuity mechanism: an `idea` or `prospect` card can be
 **promoted** into a real object (slot, show, contribution), re-anchoring the card to
 it and carrying the whole thread along — so the conversation that led to booking an
 artist stays attached to the slot it produced. Cards feed assignment (§4.13) and
@@ -642,7 +642,7 @@ without opening it. A click expands the full thread and history.
 card, changeable; the tally optionally drives the sort.
 
 Because cards are anchored to real objects and can be **promoted** from idea or
-prospection into a booked slot (§4.14), the board never drifts away from the schedule
+prospect into a booked slot (§4.14), the board never drifts away from the schedule
 it discusses — the failure mode of the current Wekan workflow.
 
 ### 5.3 Content intake, library & media browser
@@ -1105,8 +1105,12 @@ Tracked here so the document stays honest; each names where it gets resolved.
 4. **OndePlayer absorption** — the first step is decided (its Upcoming reads
    OndeStudio's API once phase-1 write-back lands, §6); still open: full timing and
    whether absorption ends in a UI merge → phase-3 planning.
-5. **Naming pass** — final vocabulary for slot types and states (this doc's terms are
-   proposals) → before the implementation plan freezes the API.
+5. **Naming pass** — ✅ resolved 2026-06-17: slot model `slot`/`occurrence`; slot kinds
+   `show`/`series`/`echo`/`live`/`rotation`; negotiation `pre-booked → dealing →
+   validated` (+ `declined`/`cancelled`/`aired`); content `empty → received → ready →
+   aired`; card intent includes `prospect`; card status `open → in progress → done →
+   archived`; live `session` (auth store uses `user_session`). Frozen in the
+   implementation plan (docs/2 §5–§6).
 6. **Media storage layout redesign** (§4.11) — architecture is settled; the concrete
    layout/conventions are designed from scratch and validated with the team →
    dedicated design session (§10).

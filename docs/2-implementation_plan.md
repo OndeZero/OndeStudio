@@ -1,6 +1,6 @@
 # OndeStudio — Implementation Plan
 
-> **Status:** living document — v0.3, 2026-06-17 (modularity & contribution pass)
+> **Status:** living document — v0.4, 2026-06-17 (naming pass applied)
 > **Nature:** the implementation plan — the bridge from the project description
 > (contexts / goals / guidelines) to running software. Where the project description
 > says *what OndeStudio must be and why*, this document says *how we build it, in what
@@ -148,7 +148,7 @@ PD §4 / PD §7.2 concept groups:
 
 | Module | Owns (PD) | Phase-1 reach |
 |---|---|---|
-| `scheduling` | shows, episodes, slot definitions, occurrences, recurrence, fallback (PD §4.2–4.5) | full (MVP core) |
+| `scheduling` | shows, episodes, slots, occurrences, recurrence, fallback (PD §4.2–4.5) | full (MVP core) |
 | `content` | media, fingerprints, contributions, rotation pools, insert rules (PD §4.6–4.8, §4.11) | media + contributions full; pools/inserts read-only |
 | `collaboration` | cards, comments, votes, notifications, assignment (PD §4.13, §4.14, §5.12) | thin board + assignment |
 | `people` | users, broadcasters (main/test fan-out), tags, sessions/replays (PD §4.9, §4.10, §4.12, §5.8, §5.10) | users + broadcasters full; sessions read-only |
@@ -329,7 +329,7 @@ extend most, so its patterns are few and uniform.
   `RecurrenceRule`). They make illegal states unrepresentable and move validation off the
   edges into the type.
 - **Aggregate** — a consistency boundary with one root entity: `Show` roots its
-  `Episode`s and slot bindings; `SlotDefinition` roots its `Occurrence`s/exceptions; a
+  `Episode`s and slot bindings; `Slot` roots its `Occurrence`s/exceptions; a
   repository loads/saves whole aggregates.
 - **Application service** (`service.ts`) — one method per use-case; loads aggregates via
   repositories, calls domain methods, persists, emits events. No business rules of its own.
@@ -355,7 +355,7 @@ once, in `platform` (§6.1).
 
 The two PD §4.4 state families are explicit machines, not loose enums: a
 `NegotiationState` value object knows its legal transitions
-(`pre-booked → in_discussion → validated → aired`, `→ declined`,
+(`pre-booked → dealing → validated → aired`, `→ declined`,
 `validated → cancelled`); `ContentState` knows `empty → received → ready → aired` with
 orthogonal `IssueFlags`. Illegal transitions are a typed error, not a silent write. The
 machines are pure and exhaustively unit-tested — they are the rules the whole product
@@ -374,7 +374,7 @@ its persistence, reached only through repositories.
 ### 5.1 Entity overview
 
 ```
-[scheduling]  show ─< slot_definition ─< occurrence >─ episode
+[scheduling]  show ─< slot ─< occurrence >─ episode
                                  occurrence ─ occurrence (echo: origin_occurrence_id)
 [content]     media (fingerprint) ─< membership >─ rotation_pool | occurrence
               contribution → media ; rotation_pool ─< insert_rule
@@ -393,13 +393,14 @@ show(id, name, slug, identity_json, drop_folder_path,
      fallback_policy ENUM('discard','replay_previous') DEFAULT 'discard',  -- PD §4.5
      trust_auto_air BOOL DEFAULT 0, replay_flag ENUM('yes','no','not_specified'),
      contributor_tz TEXT NULL, created_at, updated_at)
-slot_definition(id, show_id NULL, kind ENUM('recurring_show','rec_series','live','rotation_block'),
+slot(id, show_id NULL, kind ENUM('show','series','echo','live','rotation'),
      broadcaster_id NULL, rrule TEXT, start_wall TEXT, duration_min INT,
-     negotiation_default ENUM(...) DEFAULT 'pre-booked')
-occurrence(id, slot_definition_id, starts_at_utc, ends_at_utc, origin_occurrence_id NULL,
-     episode_id NULL, negotiation_state ENUM(...), content_state ENUM('empty','received','ready','aired'),
+     negotiation_default ENUM(...) DEFAULT 'prebooked')
+occurrence(id, slot_id, starts_at_utc, ends_at_utc, origin_occurrence_id NULL,
+     episode_id NULL, content_state ENUM('empty','received','ready','aired'),
+     negotiation_state ENUM('prebooked','dealing','validated','declined','cancelled','aired'),
      issue_flags JSON, content_duration_min INT NULL, overrides_json,
-     UNIQUE(slot_definition_id, starts_at_utc))            -- sparse (§5.3)
+     UNIQUE(slot_id, starts_at_utc))            -- sparse (§5.3)
 episode(id, show_id, title, description, meta_json, queue_order INT, arrived_at,
      source ENUM('drop','manual','contribution'), media_id NULL)
 media(id, fingerprint TEXT UNIQUE, az_file_id TEXT NULL, path, duration_sec INT,
@@ -411,8 +412,8 @@ broadcaster(id, display_name, kind ENUM('team','external'), comment_meta,
      main_streamer_ref, test_streamer_ref, enforce_schedule BOOL)   -- PD §5.10
 session(id, broadcaster_id, started_at, ended_at, occurrence_id NULL,
      replay_state ENUM('yes','no','not_specified')) ; recording_fragment(id, session_id NULL, path, started_at, duration_sec)
-card(id, intent ENUM('discussion','idea','prospection','task'),
-     status ENUM('open','in_progress','decided_done','archived'),
+card(id, intent ENUM('discussion','idea','prospect','task'),
+     status ENUM('open','in_progress','done','archived'),
      anchor_type TEXT NULL, anchor_id INT NULL, subject, outcome_json NULL, created_by)
 comment(id, card_id, author_id, body, created_at) ; vote(id, card_id, user_id, kind, UNIQUE(card_id,user_id))
 tag(id, label) ; taggable(tag_id, object_type, object_id)
@@ -425,7 +426,7 @@ projection(id, os_object_type, os_object_id, station_id, az_kind, az_id,
 ### 5.3 Recurrence — sparse materialization 🟢
 
 The calendar-app model (PD §7.2). A future occurrence is **computed on read** from
-`slot_definition.rrule` over a rolling horizon; an `occurrence` row is **persisted only
+`slot.rrule` over a rolling horizon; an `occurrence` row is **persisted only
 when it diverges** — carries state, an episode/echo binding, an exception, or has aired.
 Small table; "edit one occurrence" = one exception row; matches RFC-5545
 `RECURRENCE-ID`/`EXDATE`. Weekly is the dominant case; `rrule` is stored for
@@ -482,7 +483,7 @@ id — [AUDIT]). Exposes **OndeStudio's own model only** — AzuraCast never lea
 |---|---|---|
 | `shows` | `GET/POST /shows`, `GET/PUT/DELETE /shows/{id}` | scheduling · hub (PD §5.4) |
 | `episodes` | `GET/POST /shows/{id}/episodes`, `PUT/DELETE …`, `POST …/reorder` | scheduling · queue (PD §4.5) |
-| `slots` | `GET/POST /slots`, `GET/PUT/DELETE /slots/{id}` | scheduling · definitions |
+| `slots` | `GET/POST /slots`, `GET/PUT/DELETE /slots/{id}` | scheduling · the recurrence rule |
 | `occurrences` | `GET /occurrences?from&to&filter`, `PATCH /occurrences/{id}` | scheduling · PATCH = exception (§5.3) |
 | `rotation-pools`, `insert-rules` | `GET …` (read-only phase 1) | content · phase-2 edit (PD §6) |
 | `media` | `GET /media?path`, `GET /media/{id}`, `PUT /media/{id}/membership` | content · [AUDIT] |
@@ -750,7 +751,7 @@ night-mix pinning, replay overhaul, OndePi QR + heartbeat, echo-of-live, drop-to
 
 OndeStudio **owns its user/session store**, synced from AzuraCast accounts — not a live
 proxy (PD §4.12, §7.1) — so auth survives phase 3. **Signed httpOnly session cookies**
-backed by a `session` table (no JWT for a single-server 4–6-user app); passwords hashed
+backed by a `user_session` table (no JWT for a single-server 4–6-user app); passwords hashed
 with **`Bun.password` (argon2id)**.
 
 - **Team** (`role=team`): full surface; provisioned at seed (§7.6), sets an OndeStudio
@@ -782,8 +783,13 @@ with **`Bun.password` (argon2id)**.
 
 ## 14. Open questions (plan-level) 🟡
 
-1. **Naming pass** (PD §9.5) — slot-type/state vocabulary must land **before** §5 schema
-   and §6 resource names freeze. *Resolves: a naming session before M0 schema lock.*
+1. **Naming pass** — ✅ resolved 2026-06-17 (this session). Locked: `slot`/`occurrence`;
+   slot kinds `show`/`series`/`echo`/`live`/`rotation`; negotiation
+   `pre-booked → dealing → validated` (+ `declined`/`cancelled`/`aired`); content
+   `empty → received → ready → aired` (+ flags `technical`/`metadata`/`editorial`); card
+   intent `discussion`/`idea`/`prospect`/`task`; card status
+   `open → in progress → done → archived`; live `session` kept (auth → `user_session`).
+   The §5–§6 names below reflect it.
 2. **Media storage layout** (PD §9.6) — the from-scratch conventions **team session**;
    shapes `media`/filetree (§5.2) and the browser (§8.5). *Not inventable here;* the
    MediaStore port (§3.5) accepts whatever emerges.
@@ -824,7 +830,7 @@ This v0.3 is a **complete plan for review** — comprehensive enough to start bu
 
 | PD concept (§4) | Module | Table (§5.2) | Resource (§6.2) |
 |---|---|---|---|
-| Slot (definition) / occurrence | scheduling | `slot_definition` / `occurrence` | `slots` / `occurrences` |
+| Slot (rule) / occurrence | scheduling | `slot` / `occurrence` | `slots` / `occurrences` |
 | Show / episode / queue | scheduling | `show` / `episode` (`queue_order`) | `shows` / `episodes` |
 | Negotiation / content state | scheduling | `occurrence.*_state` | (fields) |
 | Contribution / media / fingerprint | content | `contribution` / `media.fingerprint` | `contributions` / `media` |
@@ -842,7 +848,7 @@ Concrete on-ramps; each is a small, copy-the-pattern change (invariant 6).
 - **A new API resource:** add the Zod schema to `shared`; in the owning module add the
   route in `routes.ts`, the use-case in `service.ts`, the table in `schema.ts` + a
   migration, the repo method in `repo.ts`; colocate a test. OpenAPI updates itself.
-- **A new slot kind:** extend the `slot_definition.kind` value object + its transitions in
+- **A new slot kind:** extend the `slot.kind` value object + its transitions in
   `scheduling/domain`; teach the grid renderer (§8.4) its badge/colour; add an ADR if it
   changes scheduling semantics.
 - **A new port adapter (phase 2):** implement the existing port interface (§3.5) in a new
