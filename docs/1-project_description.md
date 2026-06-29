@@ -1,6 +1,6 @@
 # OndeStudio — Project Description
 
-> **Status:** living document — v2.11, 2026-06-17
+> **Status:** living document — v2.12, 2026-06-29
 > **Nature:** contexts / goals / guidelines — the bridge between the team's ideas and
 > needs on one side, and implementation decisions on the other. This is *not* an
 > implementation plan; that will be a separate document (`docs/2-…`) informed by this
@@ -522,7 +522,9 @@ redesign below.
 The **layout itself will be redesigned from scratch** — the current tree
 (`[SHOWS]/[Name]/`, `[1SHOT]`, `[MIXS]`, `[TRACKS]`, `00 -` zones) is inspiration,
 not a design guide; the redesign includes a proper **staging zone** (the intended
-`00 - STOCK` was never really adopted) and requires explicit team validation (§9).
+`00 - STOCK` was never really adopted) and requires explicit team validation (§9). The
+concrete layout proposal is now drafted in [`docs/3-storage-layout.md`](3-storage-layout.md),
+pending that validation.
 
 **Phase-1 substrate.** In phase 1 the media layer *is* AzuraCast's: OndeStudio uses
 its files API and scanner (upload, list, assign files to playlists, index manual SFTP
@@ -1111,9 +1113,9 @@ Tracked here so the document stays honest; each names where it gets resolved.
    aired`; card intent includes `prospect`; card status `open → in progress → done →
    archived`; live `session` (auth store uses `user_session`). Frozen in the
    implementation plan (docs/2 §5–§6).
-6. **Media storage layout redesign** (§4.11) — architecture is settled; the concrete
-   layout/conventions are designed from scratch and validated with the team →
-   dedicated design session (§10).
+6. **Media storage layout redesign** (§4.11) — design session ✅ done 2026-06-29; the
+   concrete layout/conventions proposal is in [`docs/3-storage-layout.md`](3-storage-layout.md),
+   **pending the team validation** this question requires.
 7. **Replay encoding** — investigate whether the opus no-duration bug in the web
    player is fixable at muxing level; otherwise switch the pipeline to mp3 (§5.8) →
    technical investigation (§10).

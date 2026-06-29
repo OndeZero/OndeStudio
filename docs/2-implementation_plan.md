@@ -1,6 +1,6 @@
 # OndeStudio — Implementation Plan
 
-> **Status:** living document — v0.4, 2026-06-17 (naming pass applied)
+> **Status:** living document — v0.5, 2026-06-29 (storage-layout session applied)
 > **Nature:** the implementation plan — the bridge from the project description
 > (contexts / goals / guidelines) to running software. Where the project description
 > says *what OndeStudio must be and why*, this document says *how we build it, in what
@@ -402,10 +402,11 @@ occurrence(id, slot_id, starts_at_utc, ends_at_utc, origin_occurrence_id NULL,
      issue_flags JSON, content_duration_min INT NULL, overrides_json,
      UNIQUE(slot_id, starts_at_utc))            -- sparse (§5.3)
 episode(id, show_id, title, description, meta_json, queue_order INT, arrived_at,
-     source ENUM('drop','manual','contribution'), media_id NULL)
+     source ENUM('drop','manual','contribution'), media_id NULL)   -- single-file episode
+episode_media(episode_id, media_id, ord)   -- ordered parts for a folder-episode (docs/3 D1)
 media(id, fingerprint TEXT UNIQUE, az_file_id TEXT NULL, path, duration_sec INT,
      title, artist, meta_json, is_duplicate_of NULL)       -- PD §4.11
-rotation_pool(id, name, rules_json) ; insert_rule(id, name, pool_id, cadence_json, window_json, placement_json)
+rotation_pool(id, name, length ENUM('short','long'), rules_json) ; insert_rule(id, name, pool_id, cadence_json, window_json, placement_json)  -- pool length/strategy: docs/3 D2
 contribution(id, media_id NULL, format, state ENUM('received','discussed','validated','placed'), destination_json)
 user(id, az_account_ref, display_name, role ENUM('team','external'), password_hash)
 broadcaster(id, display_name, kind ENUM('team','external'), comment_meta,
@@ -790,9 +791,11 @@ with **`Bun.password` (argon2id)**.
    intent `discussion`/`idea`/`prospect`/`task`; card status
    `open → in progress → done → archived`; live `session` kept (auth → `user_session`).
    The §5–§6 names below reflect it.
-2. **Media storage layout** (PD §9.6) — the from-scratch conventions **team session**;
-   shapes `media`/filetree (§5.2) and the browser (§8.5). *Not inventable here;* the
-   MediaStore port (§3.5) accepts whatever emerges.
+2. **Media storage layout** — ✅ resolved-as-proposal 2026-06-29 (the design session):
+   target layout + conventions in [`docs/3-storage-layout.md`](3-storage-layout.md),
+   **pending team validation** (PD §9.6). Phase-1 maps onto the current tree; convergence
+   is gradual (docs/3 §6). Reflected in §5.2 (`episode`/`episode_media`,
+   `rotation_pool.length`).
 3. **Replay encoding** (PD §9.7) — opus-fix vs mp3; phase-2 pipeline, model precludes
    neither (§5.2). *Resolves: technical investigation (PD §10 step 4).*
 4. **Grid rendering library** (§8.3) — custom + interact.js (leaning) vs a lib. *Resolves:
@@ -805,6 +808,9 @@ with **`Bun.password` (argon2id)**.
 8. **Public-read auth** for the galaxy seam (§6.5). *Resolves: M5.*
 9. **Occurrence horizon** (§5.3) — how far ahead sparse materialization caches. *Resolves:
    M1, tuned to grid performance.*
+10. **Night-mixes: rotation pool vs insert rule** — storing mixes as a long rotation pool
+   (docs/3 D2) refines PD §4.8 (insert rule); the playback-mechanism reconciliation is
+   open. *Resolves: the rotation / insert-rules domain pass.*
 
 ---
 
