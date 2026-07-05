@@ -14,8 +14,11 @@ export function subscribeStationSse(
   station: StationSlug,
   channels: readonly SseChannel[],
   onEvent: (event: SseChannel, data: unknown) => void,
+  /** Fires on every (re)connect — the hook consumers use to resync state lost during a gap. */
+  onOpen?: () => void,
 ): () => void {
   const source = new EventSource(`/api/v1/stations/${station}/sse?channels=${channels.join(",")}`);
+  if (onOpen) source.addEventListener("open", onOpen);
 
   for (const channel of channels) {
     source.addEventListener(channel, (event) => {

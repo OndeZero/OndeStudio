@@ -38,5 +38,6 @@ Run from the repo root so `.env` loads. API dev serves on port 4400; web dev on 
 | `bun run test` / `bun run test:api` / `bun run test:web` | test suites |
 | `bun run check` | all gates: typecheck + lint + boundaries + test |
 | `bun run db:generate` | generate Drizzle migrations (drizzle-kit) |
+| `bun run --cwd packages/api seed:demo [--fresh]` | seed a demo week of slots/states for the grid |
 
 Code layout and conventions: `ARCHITECTURE.md` (the map) and `AGENTS.md` (the agent on-ramp).

@@ -8,5 +8,17 @@ const stationStore = useStationStore();
 </script>
 
 <template>
-  <OnAirPanel :station="stationStore.current" />
+  <!-- The narrow reading column the shell used to provide app-wide. -->
+  <div class="onair-wrap">
+    <OnAirPanel :station="stationStore.current" />
+  </div>
 </template>
+
+<style scoped>
+.onair-wrap {
+  width: 100%;
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4) var(--space-6);
+}
+</style>

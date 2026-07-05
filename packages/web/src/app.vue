@@ -9,6 +9,10 @@ const stationStore = useStationStore();
     <header class="shell-header">
       <!-- Kept as one text run so the accessible name is exactly "OndeStudio". -->
       <h1 class="wordmark">Onde<span class="wordmark-accent">Studio</span></h1>
+      <nav class="shell-nav" aria-label="Main">
+        <RouterLink to="/">Grid</RouterLink>
+        <RouterLink to="/onair">On air</RouterLink>
+      </nav>
       <label class="station-switcher">
         <span class="station-switcher-label">station</span>
         <select v-model="stationStore.current" aria-label="Active station">
@@ -50,6 +54,26 @@ const stationStore = useStationStore();
   text-shadow: 0 0 14px var(--color-accent-soft);
 }
 
+.shell-nav {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.shell-nav a {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.shell-nav a:hover {
+  color: var(--color-text);
+}
+
+.shell-nav a.router-link-exact-active {
+  color: var(--color-accent);
+}
+
 .station-switcher {
   display: flex;
   align-items: center;
@@ -76,10 +100,20 @@ const stationStore = useStationStore();
   border-color: var(--color-accent);
 }
 
-/* Single-column shell: fits the M0 panel and phone screens alike. */
+/* The shell owns the viewport; pages decide their own scrolling. The grid
+   needs full width and an internal scroll container (docs/2 §8.4), so the
+   old max-width moved into the pages that want a narrow column. */
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
 .shell-main {
-  max-width: 52rem;
-  margin: 0 auto;
-  padding: var(--space-5) var(--space-4) var(--space-6);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
 }
 </style>

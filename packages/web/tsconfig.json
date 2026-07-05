@@ -5,7 +5,8 @@
     "types": ["vite/client"]
   },
   "vueCompilerOptions": {
-    "strictTemplates": true
+    "strictTemplates": true,
+    "dataAttributes": ["data-*"]
   },
   "include": ["src", "e2e", "vite.config.ts", "playwright.config.ts"]
 }

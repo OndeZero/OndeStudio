@@ -72,6 +72,17 @@
   --content-aired: #4a5261;
 
   --flag-warning: #ffd166;
+
+  /*
+   * M1 grid chrome (docs/2 §8.4): line-work, derived-rotation ghosts and
+   * insert-rule bands. The band hue is violet on purpose — outside both the
+   * negotiation and content palettes, so overlay layers never read as state.
+   */
+  --grid-line: #1e2634;
+  --grid-line-faint: #161c28;
+  --grid-ghost: rgba(139, 149, 167, 0.09);
+  --grid-band: rgba(155, 128, 216, 0.14);
+  --grid-band-label: #a08ae0;
 }
 
 /*
@@ -107,6 +118,12 @@
   --content-aired: #9aa1ac;
 
   --flag-warning: #a97b00;
+
+  --grid-line: #e0dcd0;
+  --grid-line-faint: #ebe8de;
+  --grid-ghost: rgba(70, 80, 96, 0.07);
+  --grid-band: rgba(122, 84, 189, 0.1);
+  --grid-band-label: #6a4fae;
 }
 
 /* Minimal base — components style themselves from the tokens above. */
