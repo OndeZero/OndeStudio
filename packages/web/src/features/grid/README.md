@@ -5,8 +5,18 @@ interact.js — no calendar library. Frame = negotiation state, inner fill = con
 pipeline, badges = issue flags; mirror blocks and insert bands render AzuraCast's own
 schedule read-only; rotation is the derived gaps.
 
-This surface is gated on the team's **ergonomics validation** (the M1 exit bar); expect
-it to move. Reviewed 2026-07-06 (multi-agent pass, confirmed findings fixed or listed).
+**Ergonomics validated 2026-07-06** (the M1 exit bar): no red flags, quirks noted.
+Reviewed the same day (multi-agent pass, confirmed findings fixed or listed).
+
+## Validation feedback (2026-07-06) — the polish round
+
+- Quick-edit: the state chip and its transition buttons should sit on one line.
+- Quick-edit and the create-slot dialog should share one look (they diverge today).
+- "Should be cancellable" — to clarify with the team: cancel from more negotiation
+  states than `validated` (would loosen PD §4.4), or a Cancel affordance on the
+  quick-edit popover itself?
+- Missing settings (per-show fallback/trust, slot options…) are intended — they land
+  with their milestones (M2+).
 
 ## Known limits, deliberately left for the validation round
 

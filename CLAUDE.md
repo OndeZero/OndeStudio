@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Status
 
-OndeStudio (the OndeZero studio) is **in build**: the **M0 walking skeleton** landed 2026-07-05 — Bun workspace (`packages/shared` · `api` · `web`), one vertical slice end-to-end (`GET /stations/{station}/now`), all CI gates, and the contributor on-ramp (`CONTRIBUTING.md`, `ARCHITECTURE.md`, `AGENTS.md`, `docs/adr/`). Building toward docs/2 §11 **M1** (the week-grid prototype). The specification set under `docs/` remains the spec, finalized by the 2026-07-05 pre-build audit.
+OndeStudio (the OndeZero studio) is **in build**: **M0** (walking skeleton, 2026-07-05) and **M1** (week-grid prototype, 2026-07-06) have landed, and the grid's ergonomics were **team-validated 2026-07-06** — the M1 exit bar. Modules live: `playout` (AzuraCast read adapters + mirror) and `scheduling` (state machines, sparse occurrences, grid API); the web grid is the home surface. Next per docs/2 §11: the grid polish round (`packages/web/src/features/grid/README.md` lists the validation feedback), then **M2** (mirror complete: show page, media browser, thin board) with **M4** (broadcaster fan-out) in parallel. The specification set under `docs/` remains the spec.
 
 ## The docs are the spec
 
