@@ -25,12 +25,25 @@ export class PlayoutService {
     },
   ) {}
 
+  /** In-flight request per station — poll loop and HTTP handlers share one fetch. */
+  private readonly inFlight = new Map<string, Promise<Result<OnAirStatus, DomainError>>>();
+
   /**
    * Live-first, cache-degraded read of what's on air — the M0 vertical slice
    * (docs/2 §11). A fresh observation is cached and change-detected; when the
    * upstream is unreachable we serve the last-known state marked `stale`.
+   * Single-flight per station: concurrent callers coalesce onto one upstream
+   * fetch, so a slow old response can never overwrite a newer observation.
    */
-  async getNow(station: StationId): Promise<Result<OnAirStatus, DomainError>> {
+  getNow(station: StationId): Promise<Result<OnAirStatus, DomainError>> {
+    const running = this.inFlight.get(station.value);
+    if (running) return running;
+    const request = this.fetchOrDegrade(station).finally(() => this.inFlight.delete(station.value));
+    this.inFlight.set(station.value, request);
+    return request;
+  }
+
+  private async fetchOrDegrade(station: StationId): Promise<Result<OnAirStatus, DomainError>> {
     const fetched = await this.deps.playoutState.fetchNow(station);
     if (fetched.ok) {
       const status = OnAirStatus.fromSnapshot(station, fetched.value);
@@ -45,7 +58,11 @@ export class PlayoutService {
         station: station.value,
         reason: fetched.error.message,
       });
-      return ok(cached.staleCopy());
+      const degraded = cached.staleCopy();
+      // Degradation is a transition too: SSE subscribers must learn about it,
+      // not just REST callers who happen to poll.
+      this.notifyIfChanged(degraded);
+      return ok(degraded);
     }
     return fetched;
   }
@@ -64,7 +81,7 @@ export class PlayoutService {
   private notifyIfChanged(status: OnAirStatus): void {
     const previous = this.lastSeen.get(status.station);
     this.lastSeen.set(status.station, status);
-    if (previous?.sameOnAirAs(status)) return;
+    if (previous && previous.sameOnAirAs(status) && previous.stale === status.stale) return;
     this.deps.bus.emit("playout.on-air-changed", { station: status.station, status });
   }
 }

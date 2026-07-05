@@ -16,11 +16,16 @@ async function load(station: StationSlug): Promise<void> {
   loading.value = true;
   error.value = null;
   try {
-    onAir.value = await apiGet(`/stations/${station}/now`, OnAirSchema);
+    const fresh = await apiGet(`/stations/${station}/now`, OnAirSchema);
+    // A slow response for a previously selected station must never win over
+    // the current one — apiGet is not cancellable, so guard on arrival.
+    if (station !== props.station) return;
+    onAir.value = fresh;
   } catch (cause) {
+    if (station !== props.station) return;
     error.value = cause instanceof Error ? cause.message : String(cause);
   } finally {
-    loading.value = false;
+    if (station === props.station) loading.value = false;
   }
 }
 
@@ -32,7 +37,12 @@ function subscribe(station: StationSlug): void {
     // a non-conforming frame beats corrupting the display; the guard on
     // `station` discards a late frame from a just-closed subscription.
     const parsed = OnAirSchema.safeParse(data);
-    if (parsed.success && parsed.data.station === props.station) onAir.value = parsed.data;
+    if (parsed.success && parsed.data.station === props.station) {
+      onAir.value = parsed.data;
+      // A live frame proves the pipe works: clear any stale fetch error so the
+      // panel recovers instead of pinning the error screen over fresh data.
+      error.value = null;
+    }
   });
 }
 

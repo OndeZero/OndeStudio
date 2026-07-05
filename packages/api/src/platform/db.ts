@@ -1,11 +1,19 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import type { Logger } from "../kernel/logger";
 
 export type Db = ReturnType<typeof drizzle>;
+
+// Both paths are file-relative — never cwd-relative — so the API opens the
+// SAME database and migrations whether launched from the repo root (`bun dev`)
+// or the package (`bun --cwd packages/api dev`). fileURLToPath, not
+// URL.pathname: checkouts with spaces or non-ASCII in the path must work.
+const REPO_ROOT = fileURLToPath(new URL("../../../..", import.meta.url));
+const MIGRATIONS_FOLDER = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
 /**
  * Opens (creating if needed) the SQLite database and applies pending
@@ -13,15 +21,14 @@ export type Db = ReturnType<typeof drizzle>;
  * file-copy backups stay trivial (docs/2 §13).
  */
 export function createDb(dbPath: string, logger: Logger): Db {
-  if (dbPath !== ":memory:") mkdirSync(dirname(resolve(dbPath)), { recursive: true });
-  const sqlite = new Database(dbPath, { create: true, strict: true });
+  const resolved =
+    dbPath === ":memory:" || isAbsolute(dbPath) ? dbPath : resolve(REPO_ROOT, dbPath);
+  if (resolved !== ":memory:") mkdirSync(dirname(resolved), { recursive: true });
+  const sqlite = new Database(resolved, { create: true, strict: true });
   sqlite.exec("PRAGMA journal_mode = WAL;");
   sqlite.exec("PRAGMA foreign_keys = ON;");
   const db = drizzle(sqlite);
-  // Migrations live in packages/api/drizzle — resolved from this file, not cwd,
-  // so the API runs identically from the repo root or the package.
-  const migrationsFolder = new URL("../../drizzle", import.meta.url).pathname;
-  migrate(db, { migrationsFolder });
-  logger.info("database ready", { dbPath });
+  migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+  logger.info("database ready", { dbPath: resolved });
   return db;
 }

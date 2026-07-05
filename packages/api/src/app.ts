@@ -1,13 +1,16 @@
 import { Hono } from "hono";
+import { systemClock } from "./kernel/clock";
 import { EventBus } from "./kernel/event-bus";
+import { StationId } from "./kernel/station-id";
+import { createPlayoutRoutes, onAirToContract, PlayoutService } from "./modules/playout";
 import {
   AzuracastClient,
+  AzuracastMirrorScheduleAdapter,
   AzuracastPlayoutStateAdapter,
-  createPlayoutRoutes,
   DrizzleNowCacheRepo,
-  onAirToContract,
-  PlayoutService,
-} from "./modules/playout";
+} from "./modules/playout/wiring";
+import { createSchedulingRoutes, SchedulingService } from "./modules/scheduling";
+import { DrizzleSchedulingRepo } from "./modules/scheduling/wiring";
 import { type AppConfig, loadConfig } from "./platform/config";
 import { createDb } from "./platform/db";
 import { createApiApp } from "./platform/http";
@@ -39,14 +42,41 @@ export function buildServer(config: AppConfig = loadConfig()) {
     logger: logger.child({ component: "playout" }),
   });
 
+  // scheduling: the grid engine over the OndeStudio DB; the mirror reads
+  // AzuraCast's own schedule read-only (Increment 1, docs/2 §2.5)
+  const schedulingService = new SchedulingService({
+    repo: new DrizzleSchedulingRepo(db),
+    mirror: new AzuracastMirrorScheduleAdapter(azuracast, config.stationTz),
+    bus,
+    clock: systemClock,
+    logger: logger.child({ component: "scheduling" }),
+    zone: config.stationTz,
+  });
+
   // cross-cutting reactions live on the bus (docs/2 §3.4)
   bus.on("playout.on-air-changed", ({ station, status }) => {
     sseHub.publish(station, "onair", "onair", onAirToContract(status));
   });
+  bus.on("scheduling.grid-changed", (event) => {
+    sseHub.publish(event.station, "grid", "grid", event);
+  });
 
   const api = createApiApp(logger);
   api.route("/", createPlayoutRoutes(playoutService));
-  api.route("/", createSseRoutes(sseHub, logger));
+  api.route("/", createSchedulingRoutes(schedulingService));
+  api.route(
+    "/",
+    createSseRoutes(sseHub, logger, {
+      // Fresh (re)connections get the current on-air state immediately; grid
+      // subscribers refetch their window on connect, so no snapshot needed.
+      onair: async (station) => {
+        const parsed = StationId.parse(station);
+        if (!parsed.ok) return null;
+        const result = await playoutService.getNow(parsed.value);
+        return result.ok ? onAirToContract(result.value) : null;
+      },
+    }),
+  );
   api.get("/health", (c) => c.json({ status: "ok", adapters: { azuracast: azuracast.health() } }));
   registerOpenApi(api);
 

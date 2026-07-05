@@ -41,11 +41,14 @@ export class SlotDefinition extends Entity<number> {
    * binding or a title); a slot may be born `validated` when there is nothing
    * to negotiate (PD §4.4), otherwise it starts as a `prebooked` hold.
    */
-  static plan(input: Omit<SlotProps, "id" | "negotiationDefault"> & { bornValidated: boolean }): Result<
-    Omit<SlotProps, "id">,
-    DomainError
-  > {
-    if ((input.kind === "show" || input.kind === "series") && input.showId === null && !input.title) {
+  static plan(
+    input: Omit<SlotProps, "id" | "negotiationDefault"> & { bornValidated: boolean },
+  ): Result<Omit<SlotProps, "id">, DomainError> {
+    if (
+      (input.kind === "show" || input.kind === "series") &&
+      input.showId === null &&
+      !input.title
+    ) {
       return err(DomainError.validation(`a ${input.kind} slot needs a show or a title`));
     }
     if (input.durationMin < 5) return err(DomainError.validation("slot duration below 5 minutes"));

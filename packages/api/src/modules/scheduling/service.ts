@@ -12,7 +12,7 @@ import type { EventBus } from "../../kernel/event-bus";
 import type { Logger } from "../../kernel/logger";
 import { err, ok, type Result } from "../../kernel/result";
 import type { StationId } from "../../kernel/station-id";
-import { encodeOccurrenceId, decodeOccurrenceId, Occurrence } from "./domain/occurrence";
+import { decodeOccurrenceId, encodeOccurrenceId, Occurrence } from "./domain/occurrence";
 import { RecurrenceRule } from "./domain/recurrence-rule";
 import { SlotDefinition } from "./domain/slot-definition";
 import type { MirrorBlock, MirrorSchedulePort } from "./ports";
@@ -79,7 +79,10 @@ export class SchedulingService {
 
     for (const record of records) {
       for (const candidate of record.slot.materialize(fromUtc, toUtc, this.deps.zone)) {
-        const key = { slotId: candidate.slotId, originalStartsAtUtc: candidate.originalStartsAtUtc };
+        const key = {
+          slotId: candidate.slotId,
+          originalStartsAtUtc: candidate.originalStartsAtUtc,
+        };
         const id = encodeOccurrenceId(key);
         seen.add(id);
         const row = rowById.get(id);
@@ -116,7 +119,9 @@ export class SchedulingService {
       return true;
     });
 
-    filtered.sort((a, b) => a.occurrence.startsAtUtc.getTime() - b.occurrence.startsAtUtc.getTime());
+    filtered.sort(
+      (a, b) => a.occurrence.startsAtUtc.getTime() - b.occurrence.startsAtUtc.getTime(),
+    );
     return ok(
       filtered.map(({ occurrence, record }) => ({
         occurrence,

@@ -44,6 +44,37 @@ describe("SSE route", () => {
     expect(unknown.status).toBe(422);
   });
 
+  test("invalid stations are 422; the subscribe key is canonicalized like publishers'", async () => {
+    const hub = createSseHub(silentLogger);
+    const routes = createSseRoutes(hub, silentLogger);
+    expect((await routes.request("/stations/oz%20x/sse?channels=onair")).status).toBe(422);
+
+    // `OZ` must land on the same hub key publishers use (`oz`), not a dead one.
+    const response = await routes.request("/stations/OZ/sse?channels=onair");
+    expect(response.status).toBe(200);
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("no body stream");
+    await reader.read(); // heartbeat
+    hub.publish("oz", "onair", "onair", { n: 1 });
+    const frame = new TextDecoder().decode((await reader.read()).value);
+    expect(frame).toContain('"n":1');
+    await reader.cancel();
+  });
+
+  test("a fresh subscriber gets the channel snapshot before heartbeats", async () => {
+    const hub = createSseHub(silentLogger);
+    const routes = createSseRoutes(hub, silentLogger, {
+      onair: () => Promise.resolve({ hello: "oz" }),
+    });
+    const response = await routes.request("/stations/oz/sse?channels=onair");
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("no body stream");
+    const first = new TextDecoder().decode((await reader.read()).value);
+    expect(first).toContain("event: onair");
+    expect(first).toContain('"hello":"oz"');
+    await reader.cancel();
+  });
+
   test("streams a heartbeat then published events", async () => {
     const hub = createSseHub(silentLogger);
     const routes = createSseRoutes(hub, silentLogger);

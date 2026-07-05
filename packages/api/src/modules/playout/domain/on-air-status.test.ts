@@ -63,5 +63,21 @@ describe("OnAirStatus", () => {
       snapshot({ live: { isLive: true, streamerName: "Maigre" } }),
     );
     expect(a.sameOnAirAs(wentLive)).toBe(false);
+
+    // The wire payload carries `next` — a mid-track change of what's coming
+    // up is a transition, not noise to absorb.
+    const nextChanged = OnAirStatus.fromSnapshot(
+      oz,
+      snapshot({
+        next: {
+          title: "Up Next",
+          artist: null,
+          playlist: null,
+          startedAt: null,
+          durationSec: null,
+        },
+      }),
+    );
+    expect(a.sameOnAirAs(nextChanged)).toBe(false);
   });
 });

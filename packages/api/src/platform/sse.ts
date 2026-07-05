@@ -2,6 +2,7 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import { SSE_CHANNELS, type SseChannel } from "@ondestudio/shared";
 import { streamSSE } from "hono/streaming";
 import type { Logger } from "../kernel/logger";
+import { StationId } from "../kernel/station-id";
 import { createRouter } from "./http";
 
 type Send = (event: string, data: unknown) => void;
@@ -41,7 +42,12 @@ export function createSseHub(logger: Logger): SseHub {
         subscribers.set(k, set);
       }
       set.add(send);
-      return () => set.delete(send);
+      return () => {
+        set.delete(send);
+        // Prune empty keys: the key space is caller-influenced, so leftovers
+        // from arbitrary station strings must not accumulate.
+        if (set.size === 0) subscribers.delete(k);
+      };
     },
     subscriberCount(station, channel) {
       return subscribers.get(key(station, channel))?.size ?? 0;
@@ -51,12 +57,27 @@ export function createSseHub(logger: Logger): SseHub {
 
 const HEARTBEAT_MS = 15_000;
 
+/** Serves the current state to a fresh subscriber, so reconnects never show stale data. */
+export type SseSnapshotProvider = (station: string) => Promise<unknown | null>;
+export type SseSnapshotProviders = Partial<Record<SseChannel, SseSnapshotProvider>>;
+
 /** `GET /stations/{station}/sse?channels=onair,grid` — one connection, N channels. */
-export function createSseRoutes(hub: SseHub, logger: Logger): OpenAPIHono {
+export function createSseRoutes(
+  hub: SseHub,
+  logger: Logger,
+  snapshots: SseSnapshotProviders = {},
+): OpenAPIHono {
   const routes = createRouter();
 
   routes.get("/stations/:station/sse", (c) => {
-    const station = c.req.param("station");
+    // Validate + canonicalize: publishers key the hub on the parsed StationId
+    // value, so an unvalidated raw param would subscribe to a key nothing
+    // ever publishes to — a silently dead stream (docs/2 §6.1).
+    const stationParsed = StationId.parse(c.req.param("station"));
+    if (!stationParsed.ok) {
+      return c.json({ error: stationParsed.error.message }, 422);
+    }
+    const station = stationParsed.value.value;
     const requested = (c.req.query("channels") ?? "")
       .split(",")
       .map((chunk) => chunk.trim())
@@ -81,6 +102,16 @@ export function createSseRoutes(hub: SseHub, logger: Logger): OpenAPIHono {
         for (const fn of unregister) fn();
         logger.debug("sse closed", { station, channels });
       });
+
+      // Late subscribers (and EventSource auto-reconnects) get the current
+      // state immediately — without this, a reconnect that missed a
+      // transition would show stale data until the NEXT transition.
+      for (const channel of channels) {
+        const provider = snapshots[channel];
+        if (!provider || !open) continue;
+        const snapshot = await provider(station).catch(() => null);
+        if (snapshot !== null && open) send(channel, snapshot);
+      }
 
       // Heartbeat keeps intermediaries (and Bun's idle timeout) from cutting quiet streams.
       while (open) {

@@ -12,13 +12,9 @@ import type { Recurrence } from "@ondestudio/shared";
 import { DateTime } from "luxon";
 import { unwrap } from "../src/kernel/result";
 import { StationId } from "../src/kernel/station-id";
-import {
-  DrizzleSchedulingRepo,
-  Occurrence,
-  RecurrenceRule,
-  SlotDefinition,
-} from "../src/modules/scheduling";
+import { Occurrence, RecurrenceRule, SlotDefinition } from "../src/modules/scheduling";
 import { occurrences, shows, slots } from "../src/modules/scheduling/schema";
+import { DrizzleSchedulingRepo } from "../src/modules/scheduling/wiring";
 import { loadConfig } from "../src/platform/config";
 import { createDb } from "../src/platform/db";
 import { createLogger } from "../src/platform/logger";

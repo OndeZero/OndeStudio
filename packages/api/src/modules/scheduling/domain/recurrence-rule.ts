@@ -2,6 +2,7 @@ import type { Recurrence } from "@ondestudio/shared";
 import { DateTime } from "luxon";
 import { DomainError } from "../../../kernel/domain-error";
 import { err, ok, type Result } from "../../../kernel/result";
+import { ValueObject } from "../../../kernel/value-object";
 
 /** A concrete series time computed from the rule — the recurrence key (docs/2 §5.3). */
 export interface ComputedOccurrence {
@@ -20,8 +21,10 @@ const WALL_DATETIME = /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/;
  * (docs/2 §5.4): a 22:00 slot stays 22:00 across DST; Luxon absorbs the
  * offset changes when deriving UTC instants.
  */
-export class RecurrenceRule {
-  private constructor(readonly pattern: Recurrence) {}
+export class RecurrenceRule extends ValueObject {
+  private constructor(readonly pattern: Recurrence) {
+    super();
+  }
 
   static from(pattern: Recurrence): Result<RecurrenceRule, DomainError> {
     if (pattern.type === "weekly") {

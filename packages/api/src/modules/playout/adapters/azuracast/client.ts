@@ -19,8 +19,12 @@ export interface AzuracastClientOptions {
 export interface AdapterHealth {
   circuit: "closed" | "open";
   consecutiveFailures: number;
+  /** Alive-but-rejecting (4xx) tracking — a revoked API key shows up here, loudly. */
+  consecutiveRejections: number;
   lastSuccessAt: string | null;
   lastFailureAt: string | null;
+  lastRejectedAt: string | null;
+  lastRejectedStatus: number | null;
 }
 
 /**
@@ -37,9 +41,12 @@ export class AzuracastClient {
   private readonly breakerCooldownMs: number;
 
   private consecutiveFailures = 0;
+  private consecutiveRejections = 0;
   private openedAt: number | null = null;
   private lastSuccessAt: Date | null = null;
   private lastFailureAt: Date | null = null;
+  private lastRejectedAt: Date | null = null;
+  private lastRejectedStatus: number | null = null;
 
   constructor(private readonly options: AzuracastClientOptions) {
     this.fetchImpl = options.fetchImpl ?? fetch;
@@ -64,12 +71,24 @@ export class AzuracastClient {
         });
 
         if (response.ok) {
+          // Parse INSIDE the try: a 200 with a non-JSON body (misconfigured
+          // proxy, captive portal) is a failed attempt that must count toward
+          // the breaker — recording success before parsing would keep the
+          // circuit closed forever in that failure mode.
+          const body = (await response.json()) as T;
           this.recordSuccess();
-          return ok((await response.json()) as T);
+          return ok(body);
         }
-        // A 4xx means AzuraCast is alive and answered: no retry, breaker resets.
+        // A non-429 4xx means AzuraCast is alive but rejected us (revoked key,
+        // unknown path): no retry, circuit stays closed — but it is NOT a
+        // success. Rejections are logged and tracked so /health never shows a
+        // healthy adapter over a permanently rejected key.
         if (response.status >= 400 && response.status < 500 && response.status !== 429) {
-          this.recordSuccess();
+          this.recordRejection(response.status);
+          this.options.logger.warn("azuracast rejected request", {
+            path,
+            status: response.status,
+          });
           if (response.status === 404) return err(DomainError.notFound(`azuracast ${path}`));
           return err(
             DomainError.upstreamUnavailable(`azuracast rejected ${path} (${response.status})`),
@@ -90,8 +109,11 @@ export class AzuracastClient {
     return {
       circuit: this.circuitOpen() ? "open" : "closed",
       consecutiveFailures: this.consecutiveFailures,
+      consecutiveRejections: this.consecutiveRejections,
       lastSuccessAt: this.lastSuccessAt ? this.lastSuccessAt.toISOString() : null,
       lastFailureAt: this.lastFailureAt ? this.lastFailureAt.toISOString() : null,
+      lastRejectedAt: this.lastRejectedAt ? this.lastRejectedAt.toISOString() : null,
+      lastRejectedStatus: this.lastRejectedStatus,
     };
   }
 
@@ -107,8 +129,18 @@ export class AzuracastClient {
 
   private recordSuccess(): void {
     this.consecutiveFailures = 0;
+    this.consecutiveRejections = 0;
     this.openedAt = null;
     this.lastSuccessAt = new Date();
+  }
+
+  /** Upstream alive (so the circuit resets) but the request was refused — not a success. */
+  private recordRejection(status: number): void {
+    this.consecutiveFailures = 0;
+    this.openedAt = null;
+    this.consecutiveRejections += 1;
+    this.lastRejectedAt = new Date();
+    this.lastRejectedStatus = status;
   }
 
   private recordFailure(): void {

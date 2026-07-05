@@ -54,6 +54,36 @@ describe("AzuracastClient", () => {
     expect(calls()).toBe(1);
   });
 
+  test("a 200 with a non-JSON body is a failed attempt — the breaker can still open", async () => {
+    const { client, calls } = clientWith(
+      () =>
+        new Response("<html>captive portal</html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+      { breakerThreshold: 1, breakerCooldownMs: 60_000 },
+    );
+    const result = await client.getJson("/x");
+    expect(result.ok).toBe(false);
+    expect(client.health().lastSuccessAt).toBeNull();
+    expect(client.health().circuit).toBe("open");
+    // Fails fast while open — no second network call.
+    await client.getJson("/x");
+    expect(calls()).toBe(1);
+  });
+
+  test("sustained 4xx (revoked key) shows in health as rejection, never as success", async () => {
+    const { client } = clientWith(() => jsonResponse({}, 403));
+    const result = await client.getJson("/x");
+    expect(result.ok).toBe(false);
+    const health = client.health();
+    expect(health.lastSuccessAt).toBeNull();
+    expect(health.consecutiveRejections).toBe(1);
+    expect(health.lastRejectedStatus).toBe(403);
+    // Upstream is alive; the breaker guards availability, not authorization.
+    expect(health.circuit).toBe("closed");
+  });
+
   test("opens the circuit after consecutive failures and fails fast while open", async () => {
     const { client, calls } = clientWith(
       () => {

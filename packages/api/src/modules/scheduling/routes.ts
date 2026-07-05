@@ -50,7 +50,10 @@ const mirrorRoute = createRoute({
   path: "/stations/{station}/mirror",
   tags: ["scheduling"],
   summary: "Read-only playout-system schedule over a window (Increment 1 mirror)",
-  request: { params: stationParam, query: z.object({ from: z.iso.datetime(), to: z.iso.datetime() }) },
+  request: {
+    params: stationParam,
+    query: z.object({ from: z.iso.datetime(), to: z.iso.datetime() }),
+  },
   responses: {
     200: {
       description: "Blocks the playout system will air",
@@ -129,7 +132,10 @@ const patchOccurrenceRoute = createRoute({
     body: { content: { "application/json": { schema: PatchOccurrenceInputSchema } } },
   },
   responses: {
-    200: { description: "The updated occurrence", content: { "application/json": { schema: OccurrenceSchema } } },
+    200: {
+      description: "The updated occurrence",
+      content: { "application/json": { schema: OccurrenceSchema } },
+    },
     404: { description: "Unknown occurrence", content: errorContent },
     409: { description: "Illegal state transition", content: errorContent },
     422: { description: "Invalid input", content: errorContent },
@@ -241,7 +247,8 @@ function parseFilters(
   const filters: GridFilters = {};
   if (negotiationRaw) {
     const parsed = z.array(NegotiationStateSchema).safeParse(negotiationRaw.split(","));
-    if (!parsed.success) return err(DomainError.validation(`invalid negotiation filter: ${negotiationRaw}`));
+    if (!parsed.success)
+      return err(DomainError.validation(`invalid negotiation filter: ${negotiationRaw}`));
     filters.negotiation = parsed.data;
   }
   if (kindRaw) {

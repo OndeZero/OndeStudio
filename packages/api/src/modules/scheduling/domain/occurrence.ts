@@ -50,7 +50,11 @@ export class Occurrence extends Entity<string> {
     super(encodeOccurrenceId(props.key));
   }
 
-  static fromCandidate(key: OccurrenceKey, endsAtUtc: Date, negotiationDefault: NegotiationState): Occurrence {
+  static fromCandidate(
+    key: OccurrenceKey,
+    endsAtUtc: Date,
+    negotiationDefault: NegotiationState,
+  ): Occurrence {
     return new Occurrence({
       key,
       startsAtUtc: key.originalStartsAtUtc,

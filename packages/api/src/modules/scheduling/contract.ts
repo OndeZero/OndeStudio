@@ -1,7 +1,11 @@
-import type { MirrorBlock as MirrorBlockDto, Occurrence as OccurrenceDto, Slot as SlotDto } from "@ondestudio/shared";
+import type {
+  MirrorBlock as MirrorBlockDto,
+  Occurrence as OccurrenceDto,
+  Slot as SlotDto,
+} from "@ondestudio/shared";
 import type { MirrorBlock } from "./ports";
-import type { EnrichedOccurrence } from "./service";
 import type { SlotRecord } from "./repo";
+import type { EnrichedOccurrence } from "./service";
 
 /** Domain → wire contract, the "map out" step (docs/2 §3.2). */
 export function occurrenceToContract(

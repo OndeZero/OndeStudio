@@ -52,14 +52,24 @@ export class OnAirStatus {
   /**
    * Same broadcast moment? Drives change detection: the on-air-changed event
    * (and thus SSE pushes) fires only on real transitions, not on every poll.
+   * `next` counts too — the wire payload carries it, so a mid-track change of
+   * what's coming up must reach subscribers, not silently be absorbed.
    */
   sameOnAirAs(other: OnAirStatus): boolean {
     return (
       this.live.isLive === other.live.isLive &&
       this.live.streamerName === other.live.streamerName &&
-      (this.current?.title ?? null) === (other.current?.title ?? null) &&
-      (this.current?.artist ?? null) === (other.current?.artist ?? null) &&
-      (this.current?.startedAt?.getTime() ?? null) === (other.current?.startedAt?.getTime() ?? null)
+      sameTrack(this.current, other.current) &&
+      sameTrack(this.next, other.next)
     );
   }
+}
+
+function sameTrack(a: SnapshotTrack | null, b: SnapshotTrack | null): boolean {
+  if (a === null || b === null) return a === b;
+  return (
+    a.title === b.title &&
+    a.artist === b.artist &&
+    (a.startedAt?.getTime() ?? null) === (b.startedAt?.getTime() ?? null)
+  );
 }

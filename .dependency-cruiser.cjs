@@ -8,7 +8,10 @@ module.exports = {
     doNotFollow: { path: "node_modules" },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: "tsconfig.base.json" },
-    exclude: { path: "node_modules|/dist/|\\.test\\.ts$" },
+    // node_modules stays OUT of exclude on purpose: excluding it would strip
+    // those edges before rules run and silently kill domain-no-io-libs.
+    // doNotFollow (above) keeps the edges visible without traversing them.
+    exclude: { path: "/dist/|\\.test\\.ts$" },
   },
   forbidden: [
     {
@@ -81,6 +84,16 @@ module.exports = {
         "Application services orchestrate domain + ports; IO touches reality only in routes/repo/adapters (docs/2 §3.6).",
       severity: "error",
       from: { path: "^packages/api/src/modules/[^/]+/service\\.ts$" },
+      to: { path: "^packages/api/src/platform" },
+    },
+    {
+      name: "io-edge-only",
+      comment:
+        "Within a module, only the IO edge — routes.ts, repo.ts, adapters/ — may reach platform (docs/2 §3.6); events/schema/contract/ports/index stay platform-free (service.ts has its own stricter rule).",
+      severity: "error",
+      from: {
+        path: "^packages/api/src/modules/[^/]+/(?!routes\\.ts$|repo\\.ts$|service\\.ts$|adapters/)",
+      },
       to: { path: "^packages/api/src/platform" },
     },
   ],

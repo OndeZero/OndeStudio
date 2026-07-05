@@ -30,7 +30,9 @@ everything it decides leaves for AzuraCast from here.
 
 Standard module layout (docs/2 §3.2): `domain/` (pure), `ports.ts` (the phase-2 seam),
 `adapters/azuracast/` (the only place AzuraCast exists), `service.ts`, `repo.ts`,
-`schema.ts`, `routes.ts`, `events.ts`, `index.ts` (the public surface).
+`schema.ts`, `routes.ts`, `events.ts`, `index.ts` (the public surface), plus
+`wiring.ts` — concrete adapters/repos for the composition root only, kept off
+`index.ts` so no other module can couple to AzuraCast through a "legal" import.
 
 ## Extension points
 

@@ -1,13 +1,16 @@
 import { DomainError } from "./domain-error";
 import { err, ok, type Result } from "./result";
+import { ValueObject } from "./value-object";
 
 /**
  * A station shortcode (`oz`, `wz-test`) as a validated value object.
  * Every resource is station-scoped from day 1 (PD §7.2) — cheap phase-3
  * multi-station insurance.
  */
-export class StationId {
-  private constructor(readonly value: string) {}
+export class StationId extends ValueObject {
+  private constructor(readonly value: string) {
+    super();
+  }
 
   static parse(raw: string): Result<StationId, DomainError> {
     const slug = raw.trim().toLowerCase();
@@ -17,7 +20,7 @@ export class StationId {
     return ok(new StationId(slug));
   }
 
-  equals(other: StationId): boolean {
+  override equals(other: this): boolean {
     return this.value === other.value;
   }
 

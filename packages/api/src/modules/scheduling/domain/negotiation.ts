@@ -5,6 +5,7 @@ import {
 } from "@ondestudio/shared";
 import { DomainError } from "../../../kernel/domain-error";
 import { err, ok, type Result } from "../../../kernel/result";
+import { ValueObject } from "../../../kernel/value-object";
 
 /**
  * The negotiation state machine (PD §4.4) as a value object: it knows its
@@ -12,8 +13,10 @@ import { err, ok, type Result } from "../../../kernel/result";
  * The transition map itself lives in `shared` so the quick-edit UI offers
  * exactly what the domain accepts.
  */
-export class Negotiation {
-  private constructor(readonly value: NegotiationState) {}
+export class Negotiation extends ValueObject {
+  private constructor(readonly value: NegotiationState) {
+    super();
+  }
 
   static of(state: NegotiationState): Negotiation {
     return new Negotiation(state);

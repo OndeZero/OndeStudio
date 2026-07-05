@@ -89,4 +89,66 @@ describe("PlayoutService.getNow", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.kind).toBe("upstream-unavailable");
   });
+
+  test("degradation and recovery are transitions: the stale flip emits, once each way", async () => {
+    const port = new FakePort(ok(snapshot("Track A")));
+    const { service, events } = build(port);
+    await service.getNow(oz);
+    expect(events).toHaveLength(1);
+
+    port.result = err(DomainError.upstreamUnavailable("down"));
+    await service.getNow(oz); // fresh → stale: SSE subscribers must learn
+    expect(events).toHaveLength(2);
+    await service.getNow(oz); // still stale, same content: silence
+    expect(events).toHaveLength(2);
+
+    port.result = ok(snapshot("Track A"));
+    await service.getNow(oz); // stale → fresh again
+    expect(events).toHaveLength(3);
+  });
+
+  test("a change of the upcoming track is a transition too", async () => {
+    const port = new FakePort(ok(snapshot("Track A")));
+    const { service, events } = build(port);
+    await service.getNow(oz);
+    port.result = ok({
+      ...snapshot("Track A"),
+      next: { title: "Up Next", artist: null, playlist: null, startedAt: null, durationSec: null },
+    });
+    await service.getNow(oz);
+    expect(events).toHaveLength(2);
+  });
+
+  test("concurrent getNow calls share one upstream fetch (single-flight)", async () => {
+    let fetches = 0;
+    let release: (value: Result<NowSnapshot, DomainError>) => void = () => {};
+    const port: PlayoutStatePort = {
+      fetchNow: () => {
+        fetches += 1;
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      },
+    };
+    const service = new PlayoutService({
+      playoutState: port,
+      nowCache: new MemoryCache(),
+      bus: new EventBus(() => {}),
+      logger: silentLogger,
+    });
+
+    const first = service.getNow(oz);
+    const second = service.getNow(oz);
+    release(ok(snapshot("Track A")));
+    const [a, b] = await Promise.all([first, second]);
+    expect(fetches).toBe(1);
+    expect(unwrap(a).current?.title).toBe("Track A");
+    expect(unwrap(b)).toBe(unwrap(a));
+
+    // Once settled, the next call fetches again.
+    const third = service.getNow(oz);
+    release(ok(snapshot("Track B")));
+    expect(unwrap(await third).current?.title).toBe("Track B");
+    expect(fetches).toBe(2);
+  });
 });

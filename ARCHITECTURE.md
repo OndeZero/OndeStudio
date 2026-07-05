@@ -63,7 +63,7 @@ packages/
    └─ src/
       ├─ features/<surface>/  # grid, board, media, shows, quick-edit, onair
       ├─ ui/                  # themed primitives (theming from day one)
-      ├─ lib/api/             # typed client generated from `shared`
+      ├─ lib/api/             # typed client built on the `shared` schemas
       └─ stores/              # Pinia
 ```
 

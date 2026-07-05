@@ -17,7 +17,21 @@ const EnvSchema = z.object({
   AZURACAST_STATION_MAIN: z.string().default("oz"),
   AZURACAST_STATION_TEST: z.string().default("wz-test"),
   NOW_POLL_SECONDS: z.coerce.number().int().min(2).max(300).default(10),
+  /** Station reference timezone (PD §8.1: server-referenced, Europe/Paris). */
+  STATION_TZ: z
+    .string()
+    .default("Europe/Paris")
+    .refine(isValidTimeZone, { message: "not a valid IANA timezone" }),
 });
+
+function isValidTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export interface AppConfig {
   port: number;
@@ -30,6 +44,7 @@ export interface AppConfig {
   mainStation: StationId;
   testStation: StationId;
   nowPollSeconds: number;
+  stationTz: string;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
@@ -56,6 +71,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     mainStation,
     testStation,
     nowPollSeconds: e.NOW_POLL_SECONDS,
+    stationTz: e.STATION_TZ,
   };
 }
 

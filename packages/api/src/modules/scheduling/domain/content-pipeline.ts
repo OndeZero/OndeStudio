@@ -1,18 +1,17 @@
-import {
-  CONTENT_TRANSITIONS,
-  type ContentState,
-  ContentStateSchema,
-} from "@ondestudio/shared";
+import { CONTENT_TRANSITIONS, type ContentState, ContentStateSchema } from "@ondestudio/shared";
 import { DomainError } from "../../../kernel/domain-error";
 import { err, ok, type Result } from "../../../kernel/result";
+import { ValueObject } from "../../../kernel/value-object";
 
 /**
  * The content pipeline state machine (PD §4.4): `empty → received → ready →
  * aired`, with explicit detach back to `empty`. Orthogonal issue flags live on
  * the occurrence, not here — a slot can be `ready` and still flagged.
  */
-export class ContentPipeline {
-  private constructor(readonly value: ContentState) {}
+export class ContentPipeline extends ValueObject {
+  private constructor(readonly value: ContentState) {
+    super();
+  }
 
   static of(state: ContentState): ContentPipeline {
     return new ContentPipeline(state);

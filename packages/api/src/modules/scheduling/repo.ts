@@ -127,7 +127,10 @@ export class DrizzleSchedulingRepo implements SchedulingRepo {
           eq(slots.stationId, stationId),
           or(
             and(gte(occurrences.startsAtUtc, from), lt(occurrences.startsAtUtc, to)),
-            and(gte(occurrences.originalStartsAtUtc, from), lt(occurrences.originalStartsAtUtc, to)),
+            and(
+              gte(occurrences.originalStartsAtUtc, from),
+              lt(occurrences.originalStartsAtUtc, to),
+            ),
           ),
         ),
       );
