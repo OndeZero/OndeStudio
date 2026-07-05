@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Inline so the very first paint is dark, before theme.css loads (PD §8.1).
+         Mirrors the --color-bg token of the default theme. -->
+    <style>
+      html {
+        background-color: #0b0e14;
+      }
+    </style>
+    <title>OndeStudio</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

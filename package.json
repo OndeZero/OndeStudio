@@ -1,0 +1,29 @@
+{
+  "name": "ondestudio",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun scripts/dev.ts",
+    "dev:api": "bun --watch packages/api/src/app.ts",
+    "dev:web": "bun run --cwd packages/web dev",
+    "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/api typecheck && bun run --cwd packages/web typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "boundaries": "depcruise packages",
+    "test": "bun run test:api && bun run test:web",
+    "test:api": "bun test packages/shared packages/api",
+    "test:web": "bun run --cwd packages/web test",
+    "check": "bun run typecheck && bun run lint && bun run boundaries && bun run test",
+    "db:generate": "bun run --cwd packages/api db:generate"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.2",
+    "dependency-cruiser": "^18.0.0",
+    "lefthook": "^2.1.9",
+    "typescript": "^6.0.3"
+  }
+}

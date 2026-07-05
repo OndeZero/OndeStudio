@@ -1,0 +1,155 @@
+/*
+ * The OndeStudio theme system. Every color, space and type decision goes
+ * through a custom property so the dark retrofuturist default stays ONE theme
+ * among future ones, never a hardcoded look (PD §8.1, docs/2 §8.6).
+ *
+ * Retrofuturist restraint: a phosphor-cyan accent on deep blue-black, no
+ * scanlines, no glow overload — clean and ergonomic first, identity second.
+ * The accent is cyan (not amber) so the warm hues stay free for the state
+ * palette the M1 grid needs (dealing/amber, warning/yellow never collide
+ * with chrome).
+ */
+
+:root {
+  /* Type — system stacks only: no webfonts (sustainable web design, PD §8.1). */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Data and time displays read best tabular and terminal-flavored. */
+  --font-mono:
+    ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.6rem;
+
+  /* Rhythm. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2.5rem;
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --transition-fast: 150ms ease;
+
+  /* Surfaces and text — deep blue-black, cool off-white. */
+  --color-bg: #0b0e14;
+  --color-surface: #121722;
+  --color-surface-raised: #1a2130;
+  --color-border: #273040;
+  --color-text: #d9dee8;
+  --color-text-muted: #8b95a7;
+
+  /* The phosphor accent. */
+  --color-accent: #3fd2c4;
+  --color-accent-strong: #7deade;
+  --color-accent-soft: rgba(63, 210, 196, 0.14);
+
+  /* Signals. */
+  --color-danger: #e0564a;
+  /* Broadcast red, reserved for the LIVE badge — nothing else may claim it. */
+  --color-live: #ff4d57;
+
+  /*
+   * Semantic state tokens for the M1 grid (docs/2 §8.4, PD §4.4).
+   * Negotiation drives the slot FRAME color; the content pipeline drives the
+   * inner FILL (whose texture — hollow/hatched/solid/dimmed — is the primary
+   * channel, color the secondary); issue flags are corner badges. Kept as
+   * three token families so the channels never fight.
+   */
+  --state-prebooked: #7a8496;
+  --state-dealing: #e0b356;
+  --state-validated: #58c789;
+  --state-declined: #e0564a;
+  --state-cancelled: #9a6a72;
+  --state-aired: #566072;
+
+  --content-empty: #39414f;
+  --content-received: #67a3d9;
+  --content-ready: #7ac96f;
+  --content-aired: #4a5261;
+
+  --flag-warning: #ffd166;
+}
+
+/*
+ * Proof of themability (PD §8.1): a rough light theme. State hues keep their
+ * meaning, darkened for contrast on light surfaces; refinement comes with a
+ * real design pass, not at M0.
+ */
+[data-theme="light"] {
+  --color-bg: #f4f2ec;
+  --color-surface: #ffffff;
+  --color-surface-raised: #faf9f5;
+  --color-border: #d5d2c8;
+  --color-text: #23272e;
+  --color-text-muted: #616a76;
+
+  --color-accent: #0e8f82;
+  --color-accent-strong: #0b6e64;
+  --color-accent-soft: rgba(14, 143, 130, 0.12);
+
+  --color-danger: #c03b30;
+  --color-live: #d5303c;
+
+  --state-prebooked: #7d8697;
+  --state-dealing: #a97c1d;
+  --state-validated: #2e9257;
+  --state-declined: #c03b30;
+  --state-cancelled: #8a5560;
+  --state-aired: #8a92a0;
+
+  --content-empty: #c8ccd4;
+  --content-received: #3a78b5;
+  --content-ready: #3f9a33;
+  --content-aired: #9aa1ac;
+
+  --flag-warning: #a97b00;
+}
+
+/* Minimal base — components style themselves from the tokens above. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: 1.5;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-accent-soft);
+}
+
+/* Motion is decorative here, never informational — drop it on request. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: 0s;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

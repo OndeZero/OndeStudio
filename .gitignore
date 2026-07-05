@@ -5,10 +5,21 @@
 *.secret
 secrets.env
 
-# Node / build artifacts (future-proofing)
+# Node / build artifacts
 node_modules/
 dist/
 build/
+
+# Local runtime data (SQLite lives here; file-copy backups, docs/2 §13)
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Test artifacts
+coverage/
+test-results/
+playwright-report/
 
 # Editor / OS noise
 .DS_Store

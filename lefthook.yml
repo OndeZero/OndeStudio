@@ -1,0 +1,14 @@
+# Fast local gates (docs/2 §9.2) — CI runs the same checks via `bun run check`.
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      run: bunx biome check --staged --no-errors-on-unmatched
+    typecheck:
+      run: bun run typecheck
+    boundaries:
+      run: bun run boundaries
+pre-push:
+  commands:
+    test:
+      run: bun run test
