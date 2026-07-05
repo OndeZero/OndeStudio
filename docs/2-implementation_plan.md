@@ -1,6 +1,6 @@
 # OndeStudio — Implementation Plan
 
-> **Status:** living document — v0.5, 2026-06-29 (storage-layout session applied)
+> **Status:** living document — v0.6, 2026-07-05 (final pre-build audit applied)
 > **Nature:** the implementation plan — the bridge from the project description
 > (contexts / goals / guidelines) to running software. Where the project description
 > says *what OndeStudio must be and why*, this document says *how we build it, in what
@@ -303,7 +303,8 @@ commits the rest (all deps MIT/Apache/LGPL → AGPL-compatible, satisfying CLAUD
 | ORM / migrations | **Drizzle + drizzle-kit** | SQL-close, readable, typed, `bun:sqlite` support, versioned migrations. |
 | Password hashing | **`Bun.password` (argon2id)** | built-in, no dep (§12). |
 | Time / timezone | **Luxon** | DST-correct Europe/Paris wall-clock math (§5.3). |
-| Lint + format | **Biome** | one fast tool replaces ESLint+Prettier; less config to grasp (invariant 6). |
+| Audio identity | **ffmpeg** (system dep) | tag-independent audio-stream hash (§5.5) + duration probes; the phase-2 replay pipeline needs it anyway. |
+| Lint + format | **Biome** 🟡 | one fast tool replaces ESLint+Prettier; less config to grasp (invariant 6). Caveat: `.vue` support is partial (script blocks) — decide at M0 whether templates warrant adding eslint-plugin-vue. |
 | Dependency rules | **dependency-cruiser** | enforces the §3.6 import graph in CI. |
 | Git hooks | **Lefthook** | fast pre-commit: format, lint, typecheck, boundary-check. |
 | Versioning / changelog | **Changesets + SemVer** | per-PR changelog entries; honest releases. |
@@ -355,8 +356,8 @@ once, in `platform` (§6.1).
 
 The two PD §4.4 state families are explicit machines, not loose enums: a
 `NegotiationState` value object knows its legal transitions
-(`pre-booked → dealing → validated → aired`, `→ declined`,
-`validated → cancelled`); `ContentState` knows `empty → received → ready → aired` with
+(`pre-booked → dealing → validated → aired`, `pre-booked → validated` directly,
+`→ declined`, `validated → cancelled`); `ContentState` knows `empty → received → ready → aired` with
 orthogonal `IssueFlags`. Illegal transitions are a typed error, not a silent write. The
 machines are pure and exhaustively unit-tested — they are the rules the whole product
 turns on.
@@ -367,8 +368,8 @@ turns on.
 
 The SQLite schema realizing PD §4 and PD §7.2, owned per-module via each module's
 `schema.ts` (§3.2). Column-level detail is **first-draft** — it must not freeze ahead of
-the **naming pass** (PD §9.5, §14.1) or the front prototype (§2.1); the *shape* and the
-hard decisions below are committed. The domain (§4) is the real model; these tables are
+the front prototype (§2.1); names follow the locked naming pass (§14.1); the *shape* and
+the hard decisions below are committed. The domain (§4) is the real model; these tables are
 its persistence, reached only through repositories.
 
 ### 5.1 Entity overview
@@ -394,13 +395,15 @@ show(id, name, slug, identity_json, drop_folder_path,
      trust_auto_air BOOL DEFAULT 0, replay_flag ENUM('yes','no','not_specified'),
      contributor_tz TEXT NULL, created_at, updated_at)
 slot(id, show_id NULL, kind ENUM('show','series','echo','live','rotation'),
-     broadcaster_id NULL, rrule TEXT, start_wall TEXT, duration_min INT,
+     broadcaster_id NULL, rrule TEXT NULL,      -- NULL = one-off slot
+     start_wall TEXT, duration_min INT,
      negotiation_default ENUM(...) DEFAULT 'prebooked')
-occurrence(id, slot_id, starts_at_utc, ends_at_utc, origin_occurrence_id NULL,
+occurrence(id, slot_id, original_starts_at_utc, starts_at_utc, ends_at_utc,
+     origin_occurrence_id NULL,
      episode_id NULL, content_state ENUM('empty','received','ready','aired'),
      negotiation_state ENUM('prebooked','dealing','validated','declined','cancelled','aired'),
      issue_flags JSON, content_duration_min INT NULL, overrides_json,
-     UNIQUE(slot_id, starts_at_utc))            -- sparse (§5.3)
+     UNIQUE(slot_id, original_starts_at_utc))   -- sparse (§5.3); original_* = recurrence key
 episode(id, show_id, title, description, meta_json, queue_order INT, arrived_at,
      source ENUM('drop','manual','contribution'), media_id NULL)   -- single-file episode
 episode_media(episode_id, media_id, ord)   -- ordered parts for a folder-episode (docs/3 D1)
@@ -409,14 +412,17 @@ media(id, fingerprint TEXT UNIQUE, az_file_id TEXT NULL, path, duration_sec INT,
 rotation_pool(id, name, length ENUM('short','long'), rules_json) ; insert_rule(id, name, pool_id, cadence_json, window_json, placement_json)  -- pool length/strategy: docs/3 D2
 contribution(id, media_id NULL, format, state ENUM('received','discussed','validated','placed'), destination_json)
 user(id, az_account_ref, display_name, role ENUM('team','external'), password_hash)
-broadcaster(id, display_name, kind ENUM('team','external'), comment_meta,
-     main_streamer_ref, test_streamer_ref, enforce_schedule BOOL)   -- PD §5.10
+broadcaster(id, user_id NULL, display_name, kind ENUM('team','external'), comment_meta,
+     main_streamer_ref, test_streamer_ref, enforce_schedule BOOL,
+     replay_flag ENUM('yes','no','not_specified'))
+     -- PD §5.10; user link = external auth (§12); replay_flag = cascade step 2 (PD §5.8)
 session(id, broadcaster_id, started_at, ended_at, occurrence_id NULL,
      replay_state ENUM('yes','no','not_specified')) ; recording_fragment(id, session_id NULL, path, started_at, duration_sec)
 card(id, intent ENUM('discussion','idea','prospect','task'),
      status ENUM('open','in_progress','done','archived'),
      anchor_type TEXT NULL, anchor_id INT NULL, subject, outcome_json NULL, created_by)
 comment(id, card_id, author_id, body, created_at) ; vote(id, card_id, user_id, kind, UNIQUE(card_id,user_id))
+card_read(card_id, user_id, last_seen_at)   -- unread dot / discussion-state indicator (PD §5.2)
 tag(id, label) ; taggable(tag_id, object_type, object_id)
 assignment(id, object_type, object_id, user_id) ; notification(id, user_id, object_type, object_id, kind, read_at NULL)
 box(id, name, broadcaster_id, token_hash, last_heartbeat)
@@ -430,7 +436,11 @@ The calendar-app model (PD §7.2). A future occurrence is **computed on read** f
 `slot.rrule` over a rolling horizon; an `occurrence` row is **persisted only
 when it diverges** — carries state, an episode/echo binding, an exception, or has aired.
 Small table; "edit one occurrence" = one exception row; matches RFC-5545
-`RECURRENCE-ID`/`EXDATE`. Weekly is the dominant case; `rrule` is stored for
+`RECURRENCE-ID`/`EXDATE`: **`original_starts_at_utc` is that recurrence key** — it pins
+a persisted row to the computed instance it overrides, so a *moved* occurrence
+suppresses its original slot time instead of double-rendering. An echo occurrence pairs
+with the latest origin occurrence that precedes it (PD §4.2's "week after week"); edge
+cases are settled in the domain pass. Weekly is the dominant case; `rrule` is stored for
 forward-compat but phase 1 emits/parses only the weekly subset.
 
 ### 5.4 Time model 🟢
@@ -443,8 +453,13 @@ the adapter (§7.8, §14.5).
 
 ### 5.5 Identity, ownership, anchoring 🟢
 
-- **Fingerprint** = SHA-256 of file bytes (survives move/rename — the stated PD §4.11
-  need; exact-duplicate detection free, surfaced not blocked). Acoustic fingerprint
+- **Fingerprint** = SHA-256 of the **audio stream, tag-independent** (an ffmpeg
+  stream-copy hash of the audio packets — no decode). A whole-file hash would break on
+  any tag edit — AzuraCast metadata edits and the replay pipeline rewrite ID3 — and
+  identity must survive move, rename *and* retag (PD §4.11; decided 2026-07-05).
+  Exact-duplicate detection comes free, surfaced not blocked. Bytes are read **directly
+  from the media filesystem, read-only** — OndeStudio runs on `onde-zero` beside
+  AzuraCast (decided 2026-07-05) — never fetched through the API. Acoustic fingerprint
   (Chromaprint) is a phase-2 upgrade. `media.az_file_id` ties to AzuraCast but the row is
   keyed by fingerprint, so phase 2 can re-home files without losing history.
 - **Ownership/sync** realized by the `projection` table (§3.7), not columns scattered
@@ -465,7 +480,7 @@ from AzuraCast.
 REST/JSON, versioned `/api/v1`, **OpenAPI-documented** (generated from `shared` Zod),
 **SSE** for realtime, resources **station-scoped** (`/stations/{station}/…`, shortcode or
 id — [AUDIT]). Exposes **OndeStudio's own model only** — AzuraCast never leaked
-(PD §6, §7.2). Names provisional pending PD §9.5 (§14.1).
+(PD §6, §7.2). Names follow the locked naming pass (§14.1).
 
 ### 6.1 Conventions 🟢
 
@@ -506,9 +521,10 @@ structural ≤ 30 s (PD §6 "Freshness"). The front subscribes per active surfac
 
 `schedule` and `now` are **first-class public API**, not front-only routes (PD §7.2). This
 is what lets **OndePlayer switch its Upcoming/now-playing source onto OndeStudio** at
-write-back (M5, §11; PD §6). `schedule` returns only `validated` occurrences with
-(episode-enriched) public metadata, computing the **revert-to-generic after slot + echoes
-play** server-side (PD §5.5). Designing these properly *is* "API-first" made concrete.
+write-back (M5, §11; PD §6). `schedule` returns only publicly-announceable
+occurrences — `validated` (plus `aired` within past ranges) — with (episode-enriched)
+public metadata, computing the **revert-to-generic after slot + echoes play**
+server-side (PD §5.5). Designing these properly *is* "API-first" made concrete.
 
 ### 6.5 Auth on the API 🟢
 
@@ -533,6 +549,12 @@ phase 1 needs.
 | Now-playing meta push | live-meta-sync via API | proven in prod (OndePlayer, PD §2.2) |
 | Play history / live connect | read-only ingest (SSE + poll) | AzuraCast-owned (PD §6) |
 
+**Live-meta-sync handover.** OndePlayer's `live-meta-sync` writes now-playing meta in
+production *today*. When OndeStudio's slot-aware push goes live (M3), OndePlayer's sync
+must be **disabled in the same change** — two writers racing on the same meta would
+fight. The same handover discipline applies at M5 when OndePlayer switches its Upcoming
+source.
+
 ### 7.2 The adapter 🟢
 
 Typed AzuraCast client (fetch + `.env` key) with per-station addressing, bounded
@@ -556,11 +578,23 @@ unambiguous diffs (time/meta/enable) **absorbed** automatically; ambiguous ones 
 one-click **reconciliation inbox**. Never silently overwrite a manual edit; never fight an
 emergency fix (PD §6).
 
+**Apply model (decided 2026-07-05).** Grid edits apply **instantly with an undo
+window**: the AzuraCast push is debounced a few seconds, so an undo cancels the write
+before it leaves; `projection.last_pushed` snapshots make later reverts explicit
+operations. Concurrent team edits: optimistic checks (`updated_at`) + SSE refresh —
+last-writer-wins with a visible update, no locks (4–6 trusted users).
+
 ### 7.6 Seed import & main/test reconcile 🟢
 
 Import playlists/`schedule_items`/streamers as **untagged candidates** to adopt
 progressively; reconcile main/test mirror drift (PD §2.2/§2.3) proposing each fix for
 approval. No spreadsheet migration; Wekan archived read-only externally.
+
+**Folder-linked playlists.** Adopted show playlists may carry AzuraCast's folder
+auto-fill (today's tree feeds playlists by folder). Deterministic episode selection
+(PD §4.11) then requires either **detaching the folder link on adoption** or **actively
+pruning memberships** when attaching an episode; whether the folder link is
+API-manipulable is unverified (§14.11) — resolve at M3.
 
 ### 7.7 API account & write-target progression 🟢
 
@@ -602,15 +636,24 @@ month overview. The spike confirms or overturns this cheaply — the core risk (
 
 **8.4 Grid rendering spec.** Slot card height ∝ booked duration; inner fill ∝
 `content_duration_min`; under-run shows the gap rotation covers, over-run raises the
-overlap indicator (PD §5.1). Colour = negotiation state; badges = issue flags; they
-compose (PD §4.4). Week first; month + 3-day in fast-follow. Read-only phase-2 layers
-(rotation blocks, insert **overlay bands**) render without edit affordances (PD §4.8, §6).
+overlap indicator (PD §5.1). **State encoding — each family gets its own channel**
+(PD §4.4): frame colour = negotiation state; the inner fill's rendering = content
+pipeline (`empty` hollow · `received` hatched · `ready` solid · `aired` dimmed); corner
+badges = issue flags. The three compose without fighting; legibility is validated in
+the M1 spike. Edits apply instantly with an undo toast (§7.5). Week first; month +
+3-day in fast-follow. Read-only phase-2 layers (rotation blocks, insert **overlay
+bands**) render without edit affordances (PD §4.8, §6); phase-1 rotation blocks are
+**derived** — the gaps between scheduled objects — not AzuraCast objects.
 
 **8.5 Other surfaces.** Media browser with fingerprint identity, duplicate warnings,
-convention hints, ownership badges (PD §5.3, §5.4); object pages / show library — the
-flagship hub, one click from each lens and back (PD §5.4); board — one pivotable surface,
-group-by + sort, emoji votes, *not a Wekan clone* (PD §5.2, §8.1); quick meta/Upcoming
-editing (PD §5.5); on-air view in fast-follow (PD §5.11).
+convention hints, ownership badges (PD §5.3, §5.4) — **upload deferred past the MVP**
+(decided 2026-07-05): intake stays SFTP / AzuraCast UI, the browser browses, links and
+assigns; object pages / show library — the flagship hub, one click from each lens and
+back (PD §5.4); board — one pivotable surface, group-by + sort, emoji votes, *not a
+Wekan clone* (PD §5.2, §8.1); quick meta/Upcoming editing (PD §5.5); the grid's
+**attention rail** (decided 2026-07-05) — a slim collapsible dock with the user's
+notifications, problem slots and a one-line on-air status, first cut in M2 (PD §5.1);
+on-air view in fast-follow (PD §5.11).
 
 **8.6 Theming/sustainability.** CSS custom properties drive theming day one (the dark
 theme is one theme, not hardcoded — PD §8.1); minimal JS, lazy routes, no heavy bundles.
@@ -732,16 +775,17 @@ the contributor on-ramp in place, *before* features.
 |---|---|---|---|
 | **M0** | Foundations & walking skeleton | the on-ramp above | a runnable, extensible shell |
 | **M1** | Grid prototype *(Inc. 1 core)* | week grid reading AC + OS state overlay; slot quick-edit; grid-lib spike resolved (§8.3); mobile pass | **grid ergonomics validated — core risk; air untouched** |
-| **M2** | Mirror complete *(Inc. 1)* | show page + basic media browser; thin board + assignment + a few notification triggers; quick meta/Upcoming (read) | team plans/discusses/assigns while AC still writes |
-| **M3** | Driver *(Inc. 2)* | write-back (slots + episode-queue assignment); ownership/drift engaged; reconciliation inbox; **`wz-test` → `oz`** (dedicated account first, §7.7) | **decisions reach AzuraCast** |
-| **M4** | Broadcaster mgmt | main/test fan-out (PD §5.10) — **parallel** with M2–M3 | **centralized account mgmt with fan-out** |
+| **M2** | Mirror complete *(Inc. 1)* | show page + basic media browser; thin board + assignment + a few notification triggers; attention rail (first cut); quick meta/Upcoming (read) | team plans/discusses/assigns while AC still writes |
+| **M3** | Driver *(Inc. 2)* | write-back (slots, episode-queue assignment, now-playing meta push — OndePlayer's live-meta-sync retires, §7.1); ownership/drift engaged; reconciliation inbox; **`wz-test` → `oz`** (dedicated account first, §7.7) | **decisions reach AzuraCast** |
+| **M4** | Broadcaster mgmt | main/test fan-out (PD §5.10) — **parallel** with M2–M3; writes obey §7.7 (wz-test first, dedicated account before `oz`) | **centralized account mgmt with fan-out** |
 | **M5** | Upcoming switch | OndePlayer reads OS `schedule`/`now` (PD §6, §7.2) — first galaxy coordination | **validated slots reach the public Upcoming via OndeStudio** |
 
 **Sequencing.** M0 → M1 → M2 → M3 → M5; M4 parallel (depends only on M0 + broadcaster
 adapter). The four exit-bar items map to M1+M2 / M2 / M3 / M4.
 
-**Fast-follow** (overlay, post-MVP): month + 3-day zooms; echo slots; on-air view; fuller
-board + more notification triggers; drift-reconciliation polish.
+**Fast-follow** (overlay, post-MVP): month + 3-day zooms; echo slots; on-air view; the
+external-broadcaster self-service page (PD §5.6, after M4); global quick-open/search;
+fuller board + more notification triggers; drift-reconciliation polish.
 
 **Phase-2 watch** (kept possible by §3.5 ports, not built): rotation/insert editing,
 night-mix pinning, replay overhaul, OndePi QR + heartbeat, echo-of-live, drop-tool intake.
@@ -752,11 +796,13 @@ night-mix pinning, replay overhaul, OndePi QR + heartbeat, echo-of-live, drop-to
 
 OndeStudio **owns its user/session store**, synced from AzuraCast accounts — not a live
 proxy (PD §4.12, §7.1) — so auth survives phase 3. **Signed httpOnly session cookies**
-backed by a `user_session` table (no JWT for a single-server 4–6-user app); passwords hashed
+(`SameSite=Lax`; with the JSON-only API this covers CSRF without a token dance) backed
+by a `user_session` table (no JWT for a single-server 4–6-user app); passwords hashed
 with **`Bun.password` (argon2id)**.
 
 - **Team** (`role=team`): full surface; provisioned at seed (§7.6), sets an OndeStudio
-  password on first sign-in (store independent thereafter).
+  password via an **admin-issued one-time setup link** (AzuraCast passwords are neither
+  readable nor verifiable through the API); store independent thereafter.
 - **External broadcaster** (`role=external`): only their own slots/metadata (PD §4.12);
   verified via `IdentityPort.verifyBroadcaster` against the Icecast streamer credentials
   OndeStudio manages (it sets them in M4's fan-out, so it owns the hash; legacy accounts
@@ -777,6 +823,10 @@ with **`Bun.password` (argon2id)**.
   later.
 - **Observability:** structured logs; an **adapter-health surface** so a degraded AzuraCast
   link is visible in-app — never silent (invariant 1).
+- **AzuraCast upgrades:** one instance hosts both stations — there is no staging
+  AzuraCast. Pin the version during phase 1; before an upgrade, run the adapter's
+  recorded-fixture tests against the new version's API and re-run the wz-test write
+  audit.
 - **FOSS hygiene:** AGPL-3.0; all deps license-compatible (§3.8, CLAUDE.md); the
   conventions (§9) and contribution model (§10) *are* the hygiene.
 
@@ -811,20 +861,25 @@ with **`Bun.password` (argon2id)**.
 10. **Night-mixes: rotation pool vs insert rule** — storing mixes as a long rotation pool
    (docs/3 D2) refines PD §4.8 (insert rule); the playback-mechanism reconciliation is
    open. *Resolves: the rotation / insert-rules domain pass.*
+11. **Folder-linked playlists** (§7.6) — detach the folder auto-fill on adoption vs
+   actively prune memberships; is the folder link API-manipulable at all? *Resolves: M3.*
+12. **Notification delivery** — in-app inbox first (PD §5.12); does an async 4–6-person
+   team need a push channel (email / ntfy) for the high-value triggers? *Resolves:
+   fast-follow.*
 
 ---
 
 ## 15. Next steps 🟢
 
-This v0.3 is a **complete plan for review** — comprehensive enough to start building.
+v0.6 has been through the **final pre-build audit** (2026-07-05): review pass done,
+naming locked (§14.1), storage layout proposed (§14.2), apply-model / attention-rail /
+fingerprint-access / upload-scope decisions recorded. Building starts.
 
-1. **Review pass together** — confirm the architecture (§3), the domain stance (§4), and
-   especially the conventions + contribution model (§9, §10); flag anything off-intent.
-2. **Naming session** (PD §9.5, §14.1) — lock vocabulary so §5/§6 names can freeze.
-3. **M0** — stand up the walking skeleton and the contributor on-ramp (§11), then the
+1. **M0** — stand up the walking skeleton and the contributor on-ramp (§11), then the
    **M1 grid spike** (§8.3), the product's core risk.
-4. In parallel, PD §10's own next-steps: the **storage-layout design session** (feeds §5.2,
-   §14.2) and the **replay-encoding investigation** (§14.3).
+2. In parallel: the **replay-encoding investigation** (§14.3) and the **team validation
+   of docs/3** (§14.2).
+3. Revisit the §14 open items at their named milestones (M0 · M1 · M3 · M5).
 
 > The PD remains the source of truth for *intent*; this plan owns the *how*. Technology and
 > process commitments (§3.8, §9, §10) exist to make building possible and pleasant now —
@@ -832,7 +887,7 @@ This v0.3 is a **complete plan for review** — comprehensive enough to start bu
 
 ---
 
-## Appendix A — PD vocabulary → concrete names (provisional, pending PD §9.5)
+## Appendix A — PD vocabulary → concrete names (locked 2026-06-17, §14.1)
 
 | PD concept (§4) | Module | Table (§5.2) | Resource (§6.2) |
 |---|---|---|---|

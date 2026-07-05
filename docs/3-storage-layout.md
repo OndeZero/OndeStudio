@@ -1,6 +1,6 @@
 # OndeStudio — Media Storage Layout
 
-> **Status:** **draft proposal — v1.0, 2026-06-29 — pending team validation.**
+> **Status:** **draft proposal — v1.1, 2026-07-05 (audit fixes) — pending team validation.**
 > Output of the storage-layout design session (PD §10 step 3; resolves the design work
 > of open question PD §9.6). The PD requires **explicit team validation** of the concrete
 > layout: this document is the proposal the 4–6-person team ratifies before it becomes
@@ -15,8 +15,8 @@
 >
 > **Scope (important).** This designs the **target** layout — what OndeStudio enforces
 > once it owns the filetree (phase 2). **Phase 1 does not reorganize the live tree**: it
-> reads today's tree as-is and overlays identity/state (the write-audit confirmed file
-> *move/upload* is a phase-2 capability). The tree **converges** toward this target as
+> reads today's tree as-is and overlays identity/state (file *move/upload* were
+> deliberately left untested by the write audit — phase-2 capabilities). The tree **converges** toward this target as
 > OndeStudio acts (§6).
 
 ---
@@ -24,8 +24,8 @@
 ## 1. Settled principles (from PD §4.11 — fixed, not re-litigated)
 
 - The **filetree is canonical and human-editable** (SFTP / file-manager safe).
-- **Identity = audio fingerprint** (SHA-256 of bytes, docs/2 §5.5) — survives manual
-  moves/renames.
+- **Identity = audio fingerprint** (tag-independent hash of the audio stream, docs/2
+  §5.5) — survives manual moves/renames *and* tag edits.
 - Disk mirrors **content typology + object ownership only** — *what a file is, which
   object owns it* — **never** the scheduling/editorial layer (slots, times, states,
   discussions stay DB-only).
@@ -109,15 +109,23 @@ is its own AzuraCast playlist (→ logical membership, §1).
 │   ├─ jingles/
 │   ├─ vocals/
 │   └─ interception/
-├─ archive/                      retired content; mirrors the active tree
-│   └─ <shows|rotation|oneshots|…>/
-└─ recordings/                   NON-LIBRARY — raw live fragments, pre-processing
-                                 (processing input for §5.8 replays; never aired)
+└─ archive/                      retired content; mirrors the active tree
+    └─ <shows|rotation|oneshots|…>/
+
+(outside the media root — sibling path)
+recordings/                      NON-LIBRARY — raw live fragments, pre-processing
+                                 (processing input for PD §5.8 replays; never aired)
 ```
+
+**Raw recordings live *outside* the media root** (v1.1 audit fix): everything under the
+root is indexed by the media scanner (AzuraCast's today, OndeStudio's later), and raw
+fragments would flood the library with never-aired files. They stay where the recording
+chain writes them today; replay processing consumes them as input only.
 
 **Eligibility (D4).** Placement targets OndeStudio offers: `staging/`, `shows/<show>/`,
 `oneshots/<x>/`, `broadcasters/<b>/`, `rotation/<pool>/`, `inserts/<pool>/`. Never a
-target: `archive/`, `recordings/`, and any `replays/` subfolder (system-managed). The
+target: `archive/`, the out-of-root `recordings/` area, and any `replays/` subfolder
+(system-managed). The
 rule set is OndeStudio config, exposed via the API so the drop tool can ask "where can
 this go?".
 

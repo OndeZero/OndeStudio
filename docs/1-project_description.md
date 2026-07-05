@@ -1,6 +1,6 @@
 # OndeStudio — Project Description
 
-> **Status:** living document — v2.12, 2026-06-29
+> **Status:** living document — v2.13, 2026-07-05 (final pre-build audit applied)
 > **Nature:** contexts / goals / guidelines — the bridge between the team's ideas and
 > needs on one side, and implementation decisions on the other. This is *not* an
 > implementation plan; that will be a separate document (`docs/2-…`) informed by this
@@ -77,8 +77,9 @@ Europe/Paris timezone:
 | Schedule enforcement | per account | always off |
 | Public player | wavezero.world | test.wavezero.world (b&w background, short rotation) |
 
-The media library currently holds ~2 300 files (~54 GB, 11 % of disk). No AzuraCast
-webhooks are configured (OndePlayer relies on SSE + polling).
+The media library holds ~2 700 files / ~470 h of audio (2026-06-29 survey — see
+[`docs/3-storage-layout.md`](3-storage-layout.md) §2). No AzuraCast webhooks are
+configured (OndePlayer relies on SSE + polling).
 
 **The test station is a deliberate mirror.** Every broadcaster account exists on both
 stations with identical settings (server `wavezero.world`, mountpoint `/input`, same
@@ -385,7 +386,8 @@ pre-booked → dealing → validated → (aired)
 - `aired` — automatic, time-driven, not a human action.
 
 Slots with nothing to negotiate (e.g. a team member's own show) can be born directly
-`validated`.
+`validated`; likewise a `pre-booked` hold may jump straight to `validated` without
+passing through `dealing`.
 
 **Content state** — mostly automatic: whether what should air is actually ready. A
 primary pipeline `empty → received → ready → aired`, plus orthogonal **issue flags**
@@ -397,7 +399,9 @@ attachable at any point:
 | `metadata` | missing title/description; placeholder meta awaiting completion |
 | `editorial` | quality doubts, rights/licensing questions, needs team review |
 
-The grid badge combines the primary state color with warning icons for raised flags.
+On the grid the two families render on separate visual channels — the slot frame
+carries the negotiation state, the inner fill carries the content pipeline, warning
+icons carry raised flags (rendering spec: implementation plan §8.4).
 
 For **live slots**, `ready` has a concrete meaning: the broadcaster's setup has been
 verified against the test station (§2.2, §5.10).
@@ -496,8 +500,9 @@ architecture — **"filetree-first + active conventions"**:
 
 - The **filetree is canonical and human-editable**: the team keeps adding, moving and
   deleting files by hand (SFTP, file manager) without breaking anything.
-- Every file is identified by **audio fingerprint** (content hash), so metadata and
-  play history survive manual moves and renames.
+- Every file is identified by **audio fingerprint** — a tag-independent content hash
+  of the audio stream — so metadata and play history survive manual moves, renames
+  *and* metadata retagging (tag edits must never change identity).
 - When **OndeStudio itself** performs an action (placing a validated contribution,
   creating a show), it physically applies the folder convention — the tree converges
   toward order every time the app acts, and grid placement and disk placement become
@@ -527,9 +532,11 @@ concrete layout proposal is now drafted in [`docs/3-storage-layout.md`](3-storag
 pending that validation.
 
 **Phase-1 substrate.** In phase 1 the media layer *is* AzuraCast's: OndeStudio uses
-its files API and scanner (upload, list, assign files to playlists, index manual SFTP
-edits — all confirmed in the write audit) and overlays its own identity and state
-(fingerprints, content states) keyed to those files. OndeStudio takes over the
+its files API and scanner (list, assign files to playlists, index manual SFTP edits —
+confirmed in the write audit; upload stays out of the MVP, intake continues over
+SFTP / the AzuraCast UI) and overlays its own identity and state (fingerprints —
+computed by reading the media filesystem read-only, OndeStudio running on `onde-zero`
+beside AzuraCast — and content states) keyed to those files. OndeStudio takes over the
 filetree natively in phase 2 (§6). The filetree-first principles above are the target
 model; phase 1 honors them through AzuraCast's already-capable media management.
 
@@ -619,6 +626,12 @@ while an inner **fill shows the actual content length** once populated — an un
 is a visible gap rotation will cover, an over-run raises an **overlap indicator**
 against the next slot (soft-boundary semantics, §4.3). All of this remains editable
 on mobile, even where less comfortable than desktop.
+
+Two grid-home decisions (2026-07-05): edits apply **instantly, with an undo window** —
+no staged "pending sync" state (write mechanics: implementation plan §7.5, §8.4); and
+the grid docks a slim, collapsible **attention rail** — the user's notifications,
+problem slots, a one-line on-air status — so the home surface answers both "what's the
+week" and "what needs me" (§5.11, §5.12).
 
 ### 5.2 Discussion board
 
@@ -799,7 +812,8 @@ now?**": the current track or show, what comes next, whether a live source is
 connected, and any problem demanding immediate attention (a validated slot about to
 air empty, a live that hasn't connected, a flagged file in the next hour). Where the
 grid is for planning and negotiation, this is the live-ops dashboard for whoever is on
-duty — lightweight and glanceable, mobile included.
+duty — lightweight and glanceable, mobile included. The grid home's attention rail
+(§5.1) is its always-visible one-line cousin.
 
 ### 5.12 Notifications & awareness
 
@@ -912,8 +926,10 @@ ownership and drift rules above apply from here on.
   (§5.2, §4.13, §5.12).
 
 **Phase-1 fast-follow** (still overlay, after the MVP): month and 3-day grid zooms;
-echo slots; the operational/on-air view (§5.11); a fuller board and more notification
-triggers; drift-reconciliation polish.
+echo slots; the operational/on-air view (§5.11); the external-broadcaster self-service
+page (§5.6, once broadcaster management has landed); a global quick-open/search (any
+object one keystroke from its page); a fuller board and more notification triggers;
+drift-reconciliation polish.
 
 **Deferred to phase 2** (left running in AzuraCast meanwhile): rotation pool
 management, insert-rule editing and night-mix pinning, the replays/recordings
@@ -1130,14 +1146,14 @@ The path from this document to running software:
    playlist and streamer create/update/delete, `schedule_items`, and
    description/comments tagging all confirmed working; phase-1 write-back is viable.
    Findings: [`docs/azuracast-write-audit.md`](azuracast-write-audit.md).
-2. **`docs/2-implementation_plan.md`.** Built around the MVP boundary (§6): the
+2. **`docs/2-implementation_plan.md`.** ✅ Drafted (v0.6, audited). Built around the MVP boundary (§6): the
    two-increment front-first plan (grid ergonomics are the core risk), media-browser
    and object-pages UX design (§5.3, §5.4), API design (from the §7.2 resource sketch),
    module boundaries honoring the phase-2 takeover, and the data model from §4. (Stack
    is locked in §7.1: Bun, Vue 3 + Vite, SQLite; auth = OndeStudio-owned store synced
    from AzuraCast; phase-1 media via AzuraCast's API + scanner.)
-3. **Media storage layout design session.** Interactive, like the sessions that
-   produced this document; ends with team-validated storage conventions (open
-   question 6).
+3. **Media storage layout design session.** ✅ Done 2026-06-29 — proposal in
+   [`docs/3-storage-layout.md`](3-storage-layout.md); the team validation it requires
+   is still pending (open question 6).
 4. **Replay encoding investigation.** Opus muxing fix vs mp3 switch (open
    question 7).
