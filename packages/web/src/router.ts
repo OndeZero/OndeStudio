@@ -44,6 +44,13 @@ export const router = createRouter({
       component: () => import("./features/broadcasters/broadcasters-page.vue"),
     },
     {
+      // Root-level like broadcasters: the write-back driver spans every write
+      // station (docs/2 §7.7), it is not scoped to the active grid station.
+      path: "/driver",
+      name: "driver",
+      component: () => import("./features/driver/driver-page.vue"),
+    },
+    {
       path: "/media",
       name: "media",
       component: () => import("./features/media/media-page.vue"),

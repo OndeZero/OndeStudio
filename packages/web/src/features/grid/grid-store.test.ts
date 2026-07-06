@@ -113,7 +113,40 @@ describe("grid-store optimistic patching", () => {
     resolvePatch(serverEcho);
     await expect(pending).resolves.toBe(true);
     expect(store.occurrences[0]).toEqual(serverEcho);
-    expect(toasts).toHaveLength(0);
+    // A successful edit now offers a one-click undo (docs/2 §7.5).
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]?.kind).toBe("info");
+    expect(toasts[0]?.action?.label).toBe("Undo");
+  });
+
+  it("undoes a move by re-patching the previous wall start, without re-toasting", async () => {
+    primeApi([occurrenceFixture()]);
+    const store = useGridStore();
+    await store.setWeek("2026-07-06");
+
+    // First move: 21:00Z → 22:00Z (00:00 Paris), server echoes it.
+    apiMutateMock.mockResolvedValue(
+      occurrenceFixture({ startsAt: "2026-07-08T22:00:00.000Z", moved: true }),
+    );
+    await store.patchOccurrence("1_1752008400000", {
+      startsAtWall: "2026-07-09T00:00",
+      durationMin: 120,
+    });
+
+    const undo = toasts[0]?.action;
+    expect(undo?.label).toBe("Undo");
+
+    // Undo re-patches back to the pre-edit wall start (23:00 Paris = 21:00Z)…
+    apiMutateMock.mockClear();
+    apiMutateMock.mockResolvedValue(occurrenceFixture());
+    undo?.run();
+    await Promise.resolve();
+    expect(apiMutateMock).toHaveBeenCalledWith(
+      "PATCH",
+      "/stations/oz/occurrences/1_1752008400000",
+      expect.objectContaining({ startsAtWall: "2026-07-08T23:00", durationMin: 120 }),
+      expect.anything(),
+    );
   });
 
   it("rolls back and toasts when the PATCH fails", async () => {

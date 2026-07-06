@@ -18,10 +18,18 @@ import { computed, ref } from "vue";
 import { apiGet } from "../../lib/api/client";
 import { apiMutate } from "../../lib/api/mutate";
 import { subscribeStationSse } from "../../lib/api/sse";
-import { addDays, dayStartUtc, wallToUtc, weekMondayOf } from "../../lib/station-time";
+import { addDays, dayStartUtc, utcToWall, wallToUtc, weekMondayOf } from "../../lib/station-time";
 import { useStationStore } from "../../stores/station";
 import { type DayWindow, splitIntoDaySegments } from "./grid-segments";
 import { pushToast } from "./toast";
+
+/**
+ * The undo window (docs/2 §7.5): the AzuraCast push is debounced server-side,
+ * so reverting OS state within this window means the debounced reconcile reads
+ * the reverted desired state and pushes nothing net. 6s > the 4s server
+ * debounce, so the toast outlives the window it guards.
+ */
+const UNDO_TTL_MS = 6000;
 
 /** Until a `stations` resource exposes per-station config (docs/2 §6.2). */
 export const DEFAULT_ZONE = "Europe/Paris";
@@ -167,7 +175,13 @@ export const useGridStore = defineStore("grid", () => {
    * where the user dropped it before the wire answers; a failure rolls the
    * exact previous occurrence back and surfaces the reason as a toast.
    */
-  async function patchOccurrence(id: string, patch: PatchOccurrenceInput): Promise<boolean> {
+  async function patchOccurrence(
+    id: string,
+    patch: PatchOccurrenceInput,
+    // The undo re-patch passes false so reverting a move doesn't itself spawn
+    // an undo toast (which would toggle-toast forever).
+    undoable = true,
+  ): Promise<boolean> {
     const index = occurrences.value.findIndex((o) => o.id === id);
     const before = index >= 0 ? occurrences.value[index] : undefined;
     if (!before) return false;
@@ -181,6 +195,7 @@ export const useGridStore = defineStore("grid", () => {
         OccurrenceSchema,
       );
       replaceOccurrence(id, updated);
+      if (undoable) pushUndoToast(id, before, patch);
       return true;
     } catch (cause) {
       pushToast("error", messageOf(cause));
@@ -197,14 +212,46 @@ export const useGridStore = defineStore("grid", () => {
     if (index >= 0) occurrences.value.splice(index, 1, occurrence);
   }
 
+  /**
+   * Offer a one-click revert of the edit just applied (docs/2 §7.5). Only the
+   * fields the edit touched are inverted back to `before`, so undo is a minimal
+   * re-patch. Undoing within the window reverts OS state before the debounced
+   * server reconcile fires, so the net AzuraCast push is nothing.
+   */
+  function pushUndoToast(id: string, before: Occurrence, patch: PatchOccurrenceInput): void {
+    const inverse: PatchOccurrenceInput = {};
+    if (patch.startsAtWall !== undefined)
+      inverse.startsAtWall = utcToWall(new Date(before.startsAt), zone.value);
+    if (patch.durationMin !== undefined) inverse.durationMin = before.durationMin;
+    if (patch.negotiationState !== undefined) inverse.negotiationState = before.negotiationState;
+    if (patch.issueFlags !== undefined) inverse.issueFlags = [...before.issueFlags];
+    if (patch.contentDurationMin !== undefined)
+      inverse.contentDurationMin = before.contentDurationMin;
+    pushToast("info", "Edit applied.", UNDO_TTL_MS, {
+      label: "Undo",
+      run: () => void patchOccurrence(id, inverse, false),
+    });
+  }
+
   async function transitionOccurrence(id: string, state: NegotiationState): Promise<boolean> {
     return patchOccurrence(id, { negotiationState: state });
   }
 
   async function createSlot(input: CreateSlotInput): Promise<boolean> {
     try {
-      await apiMutate("POST", `/stations/${stationStore.current}/slots`, input, SlotSchema);
+      const created = await apiMutate(
+        "POST",
+        `/stations/${stationStore.current}/slots`,
+        input,
+        SlotSchema,
+      );
       await Promise.all([loadWindow(), loadSlots()]);
+      // Undo a fresh create by deleting it (docs/2 §7.5): the debounced push
+      // then never projects it. Delete-undo (recreate) stays out of scope.
+      pushToast("info", "Slot created.", UNDO_TTL_MS, {
+        label: "Undo",
+        run: () => void deleteSlot(created.id),
+      });
       return true;
     } catch (cause) {
       pushToast("error", messageOf(cause));

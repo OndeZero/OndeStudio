@@ -2,7 +2,7 @@
 import { watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { railOpen } from "./features/grid/rail-state";
-import { dismissToast, toasts } from "./features/grid/toast";
+import { dismissToast, runToastAction, toasts } from "./features/grid/toast";
 import { useAuthStore } from "./stores/auth";
 import { useNotificationsStore } from "./stores/notifications";
 import { useStationStore } from "./stores/station";
@@ -25,6 +25,7 @@ const NAV = [
   { to: "/board", label: "Board", match: /^\/board/ },
   { to: "/shows", label: "Shows", match: /^\/shows/ },
   { to: "/broadcasters", label: "Broadcasters", match: /^\/broadcasters/ },
+  { to: "/driver", label: "Driver", match: /^\/driver/ },
   { to: "/media", label: "Media", match: /^\/media/ },
   { to: "/onair", label: "On air", match: /^\/onair/ },
 ];
@@ -111,6 +112,15 @@ async function onLogout(): Promise<void> {
     <div class="toast-stack" aria-live="polite">
       <div v-for="toast in toasts" :key="toast.id" class="toast" :class="`toast-${toast.kind}`">
         <span class="toast-message">{{ toast.message }}</span>
+        <!-- Inline affordance, e.g. the grid's undo window (docs/2 §7.5). -->
+        <button
+          v-if="toast.action"
+          type="button"
+          class="toast-action"
+          @click="runToastAction(toast.id)"
+        >
+          {{ toast.action.label }}
+        </button>
         <button type="button" class="toast-dismiss" title="Dismiss" @click="dismissToast(toast.id)">
           ×
         </button>
@@ -287,7 +297,21 @@ async function onLogout(): Promise<void> {
   border-left: 3px solid var(--color-accent);
 }
 .toast-message {
+  flex: 1;
+  min-width: 0;
   overflow-wrap: anywhere;
+}
+/* Small inline action (Undo): accent-bordered, distinct from the × dismiss. */
+.toast-action {
+  flex: none;
+  padding: 1px var(--space-2);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  color: var(--color-accent);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
 }
 .toast-dismiss {
   padding: 0 var(--space-1);

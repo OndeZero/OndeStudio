@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { type Notification, type Occurrence, OccurrencesResponseSchema } from "@ondestudio/shared";
-import { ref, watch } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { apiGet } from "../../lib/api/client";
 import { addDays, formatDayLabel, formatHm, isoDayOf, isoWeekdayOf } from "../../lib/station-time";
 import { useNotificationsStore } from "../../stores/notifications";
 import { useStationStore } from "../../stores/station";
+import { useDriverStore } from "../driver/driver-store";
 import { useGridStore } from "./grid-store";
 import { ISSUE_FLAG_LETTERS } from "./grid-symbols";
 import RailOnairLine from "./rail-onair-line.vue";
@@ -21,6 +22,16 @@ const notifications = useNotificationsStore();
 const grid = useGridStore();
 const stationStore = useStationStore();
 const router = useRouter();
+
+// The driver's open reconciliations belong on the "what needs me" surface: an
+// unresolved AzuraCast edit blocks write-back (RFC 0001). The store polls and
+// follows the grid SSE channel while the rail is mounted.
+const driver = useDriverStore();
+onMounted(() => {
+  void driver.load();
+  driver.start();
+});
+onUnmounted(() => driver.stop());
 
 const DAY_MS = 86_400_000;
 
@@ -125,6 +136,16 @@ function openNotification(n: Notification): void {
     </button>
 
     <div v-if="railOpen" class="rail-body">
+      <!-- Write-back conflicts lead: they block the driver until a human picks a side. -->
+      <section v-if="driver.openReconciliationCount > 0" class="rail-section">
+        <h3 class="rail-title">write-back</h3>
+        <RouterLink to="/driver" class="rail-conflict">
+          {{ driver.openReconciliationCount }} schedule
+          conflict{{ driver.openReconciliationCount === 1 ? "" : "s" }}
+          {{ driver.openReconciliationCount === 1 ? "needs" : "need" }} a decision →
+        </RouterLink>
+      </section>
+
       <section class="rail-section">
         <header class="rail-head">
           <h3 class="rail-title">needs you</h3>
@@ -258,6 +279,21 @@ function openNotification(n: Notification): void {
   margin: 0;
   color: var(--color-text-muted);
   font-size: var(--text-xs);
+}
+
+/* Warning-toned, matching the grid's mirror notice — never the accent. */
+.rail-conflict {
+  display: block;
+  padding: var(--space-1) var(--space-2);
+  background: color-mix(in srgb, var(--flag-warning) 12%, transparent);
+  border-left: 3px solid var(--flag-warning);
+  border-radius: var(--radius-sm);
+  color: var(--flag-warning);
+  font-size: var(--text-xs);
+  text-decoration: none;
+}
+.rail-conflict:hover {
+  background: color-mix(in srgb, var(--flag-warning) 22%, transparent);
 }
 
 .rail-item {
