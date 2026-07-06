@@ -13,8 +13,8 @@ import {
 } from "./modules/collaboration";
 import { DrizzleCollaborationRepo } from "./modules/collaboration/wiring";
 import { ContentService, createContentRoutes } from "./modules/content";
-import { createPeopleRoutes, PeopleService } from "./modules/people";
-import { DrizzlePeopleRepo } from "./modules/people/wiring";
+import { BroadcasterService, createBroadcasterRoutes, createPeopleRoutes, PeopleService } from "./modules/people";
+import { DrizzleBroadcasterRepo, DrizzlePeopleRepo } from "./modules/people/wiring";
 import { createPlayoutRoutes, onAirToContract, PlayoutService } from "./modules/playout";
 import {
   AzuracastClient,
@@ -22,6 +22,7 @@ import {
   AzuracastFilesAdapter,
   AzuracastMirrorScheduleAdapter,
   AzuracastPlayoutStateAdapter,
+  AzuracastStreamerAdapter,
   DrizzleNowCacheRepo,
 } from "./modules/playout/wiring";
 import {
@@ -172,6 +173,16 @@ export function buildServer(config: AppConfig = loadConfig()) {
     clock: systemClock,
     logger: logger.child({ component: "people" }),
   });
+  // M4 fan-out: writes reach ONLY config.writeStations (docs/2 §7.7) — the
+  // adapter enforces it a second time (defense in depth around `oz`).
+  const broadcasterService = new BroadcasterService({
+    repo: new DrizzleBroadcasterRepo(db),
+    streamers: new AzuracastStreamerAdapter(azuracast, config.writeStations),
+    mainStation: config.mainStation,
+    testStation: config.testStation,
+    writeStations: config.writeStations,
+    logger: logger.child({ component: "broadcasters" }),
+  });
   const cookieSecret = loadOrCreateSessionSecret(
     config.sessionSecret,
     resolveDataPath("data/session-secret"),
@@ -192,6 +203,10 @@ export function buildServer(config: AppConfig = loadConfig()) {
     }),
   );
   api.route("/", createPeopleRoutes(peopleService, cookieSecret));
+  api.route(
+    "/",
+    createBroadcasterRoutes(broadcasterService, config.writeStations.map((s) => s.value)),
+  );
   api.route("/", createPlayoutRoutes(playoutService));
   api.route("/", createSchedulingRoutes(schedulingService));
   api.route("/", createShowRoutes(showService));

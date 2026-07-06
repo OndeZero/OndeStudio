@@ -24,6 +24,11 @@ const EnvSchema = z.object({
     .refine(isValidTimeZone, { message: "not a valid IANA timezone" }),
   /** Cookie-signing secret; when absent one is generated into data/session-secret. */
   SESSION_SECRET: z.string().min(32).optional(),
+  /**
+   * Stations OndeStudio may WRITE to (docs/2 §7.7). Production (`oz`) joins
+   * only after the per-feature adoption step AND the dedicated API account.
+   */
+  AZURACAST_WRITE_STATIONS: z.string().default("wz-test"),
 });
 
 function isValidTimeZone(zone: string): boolean {
@@ -48,6 +53,8 @@ export interface AppConfig {
   nowPollSeconds: number;
   stationTz: string;
   sessionSecret: string | undefined;
+  /** Fan-out write targets (docs/2 §7.7) — subset of `stations`. */
+  writeStations: StationId[];
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
@@ -76,6 +83,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     nowPollSeconds: e.NOW_POLL_SECONDS,
     stationTz: e.STATION_TZ,
     sessionSecret: e.SESSION_SECRET,
+    writeStations: e.AZURACAST_WRITE_STATIONS.split(",")
+      .map((raw) => raw.trim())
+      .filter((raw) => raw.length > 0)
+      .map(parseStation),
   };
 }
 

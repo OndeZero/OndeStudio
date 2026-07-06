@@ -105,6 +105,60 @@ export class AzuracastClient {
     return err(DomainError.upstreamUnavailable(`azuracast unreachable: ${lastFailure}`));
   }
 
+  /**
+   * Write request — SINGLE attempt, no retry: a timed-out POST may have
+   * landed, and blind retries would duplicate objects (docs/2 §6.1 wants
+   * idempotency by OS id, not by hammering). Breaker bookkeeping is shared
+   * with reads.
+   */
+  async sendJson<T>(
+    method: "POST" | "PUT" | "DELETE",
+    path: string,
+    body?: unknown,
+  ): Promise<Result<T, DomainError>> {
+    if (this.circuitOpen()) {
+      return err(DomainError.upstreamUnavailable("azuracast circuit open — cooling down"));
+    }
+    try {
+      const response = await this.fetchImpl(`${this.options.baseUrl}${path}`, {
+        method,
+        headers: {
+          "X-API-Key": this.options.apiKey,
+          Accept: "application/json",
+          ...(body !== undefined ? { "content-type": "application/json" } : {}),
+        },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+      if (response.ok) {
+        const text = await response.text();
+        this.recordSuccess();
+        return ok((text ? JSON.parse(text) : null) as T);
+      }
+      if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+        this.recordRejection(response.status);
+        this.options.logger.warn("azuracast rejected write", {
+          method,
+          path,
+          status: response.status,
+        });
+        if (response.status === 404) return err(DomainError.notFound(`azuracast ${path}`));
+        return err(
+          DomainError.upstreamUnavailable(
+            `azuracast rejected ${method} ${path} (${response.status})`,
+          ),
+        );
+      }
+      this.recordFailure();
+      return err(
+        DomainError.upstreamUnavailable(`azuracast write failed: http ${response.status}`),
+      );
+    } catch (error) {
+      this.recordFailure();
+      return err(DomainError.upstreamUnavailable(`azuracast unreachable: ${String(error)}`));
+    }
+  }
+
   health(): AdapterHealth {
     return {
       circuit: this.circuitOpen() ? "open" : "closed",

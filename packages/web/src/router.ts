@@ -37,6 +37,13 @@ export const router = createRouter({
       component: () => import("./features/shows/shows-page.vue"),
     },
     {
+      // Root-level on purpose: a broadcaster IS the main+test pair (PD §5.10),
+      // so unlike the other surfaces this page is not station-scoped.
+      path: "/broadcasters",
+      name: "broadcasters",
+      component: () => import("./features/broadcasters/broadcasters-page.vue"),
+    },
+    {
       path: "/media",
       name: "media",
       component: () => import("./features/media/media-page.vue"),

@@ -36,6 +36,13 @@
       "when": 1783324329126,
       "tag": "0004_condemned_jack_murdock",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1783332948118,
+      "tag": "0005_abnormal_grandmaster",
+      "breakpoints": true
     }
   ]
 }

@@ -8,5 +8,6 @@ export { type AdapterHealth, AzuracastClient } from "./adapters/azuracast/client
 export { AzuracastDirectoryAdapter } from "./adapters/azuracast/directory-adapter";
 export { AzuracastFilesAdapter } from "./adapters/azuracast/files-adapter";
 export { AzuracastPlayoutStateAdapter } from "./adapters/azuracast/now-adapter";
+export { AzuracastStreamerAdapter } from "./adapters/azuracast/streamer-adapter";
 export { AzuracastMirrorScheduleAdapter } from "./adapters/azuracast/schedule-adapter";
 export { DrizzleNowCacheRepo } from "./repo";

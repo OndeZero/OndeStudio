@@ -2,8 +2,28 @@
 
 Identity and access (docs/2 §12, PD §4.12): OndeStudio's **own** user/session store,
 seeded from AzuraCast accounts but independent thereafter — auth survives phase 3 when
-AzuraCast disappears. M2 ships users + sessions + the team directory; broadcasters with
-their main/test fan-out join in M4, tags and sessions/replays later.
+AzuraCast disappears. M2 ships users + sessions + the team directory; M4 adds
+broadcasters with their main/test fan-out; tags and sessions/replays come later.
+
+## Broadcasters (M4 — the fan-out, PD §5.10)
+
+One definition fans out to both stations: identical username/credential, schedule
+enforcement pushed to MAIN only, the test mirror always unrestricted (PD §2.2).
+Rules that matter:
+
+- **Writes obey docs/2 §7.7 twice**: the composition root wires only
+  `AZURACAST_WRITE_STATIONS` (default `wz-test`) into the fan-out, and the playout
+  streamer adapter refuses anything else itself. `oz` reports `blocked` until the
+  dedicated API account exists and the team adopts the feature — never silently
+  skipped, always in `warnings`.
+- Every streamer we own upstream carries the `[ondestudio:broadcaster:<id>]` marker
+  (docs/2 §3.7). Adopted (imported) streamers keep their credentials — which are
+  unreadable upstream, so `hasPassword: false` until a rotate; the mirror-drift fix
+  (`sync-test`) therefore issues a fresh credential and says so.
+- Routes live at root level (`/broadcasters`), not under `/stations/{station}` — a
+  deliberate deviation from the docs/2 §6.2 sketch: the object IS the station pair.
+- Full projection rows + the drift engine arrive with M3; until then the
+  `*_streamer_ref` columns carry the linkage.
 
 ## How auth works
 

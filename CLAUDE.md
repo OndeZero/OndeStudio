@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Status
 
-OndeStudio (the OndeZero studio) is **in build**: **M0** (walking skeleton, 2026-07-05) and **M1** (week-grid prototype, 2026-07-06) have landed, and the grid's ergonomics were **team-validated 2026-07-06** — the M1 exit bar. Modules live: `playout` (AzuraCast read adapters + mirror) and `scheduling` (state machines, sparse occurrences, grid API); the web grid is the home surface. Next per docs/2 §11: the grid polish round (`packages/web/src/features/grid/README.md` lists the validation feedback), then **M2** (mirror complete: show page, media browser, thin board) with **M4** (broadcaster fan-out) in parallel. The specification set under `docs/` remains the spec.
+OndeStudio (the OndeZero studio) is **in build**: **M0** (walking skeleton, 2026-07-05) and **M1** (week-grid prototype, 2026-07-06) have landed, and the grid's ergonomics were **team-validated 2026-07-06** — the M1 exit bar. Modules live: `playout` (AzuraCast read adapters + mirror) and `scheduling` (state machines, sparse occurrences, grid API); the web grid is the home surface. **M2** (auth, board, show hub, media browser) and **M4** (broadcaster main/test fan-out — the first AzuraCast writes, `wz-test` only per docs/2 §7.7) landed 2026-07-07, plus reversible negotiation states (ADR-0012). Next: **M3** driver (write-back + drift engine) toward **M5** (OndePlayer switch); fast-follow list in docs/2 §11. The specification set under `docs/` remains the spec.
 
 ## The docs are the spec
 

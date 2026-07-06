@@ -24,6 +24,7 @@ const NAV = [
   { to: "/", label: "Grid", match: /^\/$/ },
   { to: "/board", label: "Board", match: /^\/board/ },
   { to: "/shows", label: "Shows", match: /^\/shows/ },
+  { to: "/broadcasters", label: "Broadcasters", match: /^\/broadcasters/ },
   { to: "/media", label: "Media", match: /^\/media/ },
   { to: "/onair", label: "On air", match: /^\/onair/ },
 ];

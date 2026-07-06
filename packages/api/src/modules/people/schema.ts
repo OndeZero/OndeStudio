@@ -22,6 +22,31 @@ export const users = sqliteTable("user", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const broadcasters = sqliteTable("broadcaster", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  /** Future link to a login for the external self-service page (fast-follow). */
+  userId: integer("user_id"),
+  /** streamer_username — identical on both stations (PD §5.10). */
+  username: text("username").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  kind: text("kind", { enum: ["team", "external"] })
+    .notNull()
+    .default("external"),
+  commentMeta: text("comment_meta"),
+  /** Pushed to MAIN only; the test mirror always stays unrestricted (PD §2.2). */
+  enforceSchedule: integer("enforce_schedule", { mode: "boolean" }).notNull().default(false),
+  replayFlag: text("replay_flag", { enum: ["yes", "no", "not_specified"] })
+    .notNull()
+    .default("not_specified"),
+  /** argon2id of the streamer credential — OndeStudio owns it going forward (docs/2 §12); null = adopted, credential unknown. */
+  passwordHash: text("password_hash"),
+  /** AzuraCast streamer ids per station; null = nothing linked there yet. Full projection rows arrive with the M3 drift engine. */
+  mainStreamerRef: text("main_streamer_ref"),
+  testStreamerRef: text("test_streamer_ref"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 export const userSessions = sqliteTable("user_session", {
   /** Random 256-bit id — the (signed) cookie value. */
   id: text("id").primaryKey(),

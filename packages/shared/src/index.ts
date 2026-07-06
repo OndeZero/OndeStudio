@@ -6,6 +6,7 @@
 export * from "./api-error";
 export * from "./auth";
 export * from "./board";
+export * from "./broadcasters";
 export * from "./media";
 export * from "./on-air";
 export * from "./scheduling";
