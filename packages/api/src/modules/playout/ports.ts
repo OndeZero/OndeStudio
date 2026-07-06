@@ -72,6 +72,17 @@ export interface PlayoutWritePort {
     station: StationId,
     ref: string,
   ): Promise<Result<ScheduleBlockSnapshot | null, DomainError>>;
+  /**
+   * Every OndeStudio-tagged block upstream, keyed by its marker (RFC 0001
+   * step 1 — observe by marker). This is what makes create idempotent: a
+   * timed-out create that actually landed is re-adopted here instead of
+   * duplicated. One list call per reconcile also replaces N per-row readbacks.
+   */
+  listTaggedBlocks(
+    station: StationId,
+  ): Promise<
+    Result<{ ref: string; marker: string; snapshot: ScheduleBlockSnapshot }[], DomainError>
+  >;
 }
 
 /** A slot the driver should maintain in AzuraCast, already resolved to its block shape. */
@@ -104,4 +115,10 @@ export interface SlotSinkPort {
     slotId: number,
     schedule: { weekdays: number[]; time: string; durationMin: number },
   ): Promise<Result<void, DomainError>>;
+  /**
+   * Accepting a manual AzuraCast *deletion* of a projected slot (the
+   * `keep-azuracast` resolution on a delete): un-validate the slot so the
+   * driver stops projecting it — it stays on the grid as a hold, not on air.
+   */
+  retractSlot(station: StationId, slotId: number): Promise<Result<void, DomainError>>;
 }

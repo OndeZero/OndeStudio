@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import type { DomainError } from "../../kernel/domain-error";
-import { ok, type Result, unwrap } from "../../kernel/result";
+import { DomainError } from "../../kernel/domain-error";
+import { err, ok, type Result, unwrap } from "../../kernel/result";
 import { StationId } from "../../kernel/station-id";
 import { createDb } from "../../platform/db";
 import { silentLogger } from "../../platform/logger";
@@ -31,7 +31,16 @@ class FakePlayout implements PlayoutWritePort {
   createCalls = 0;
   updateCalls = 0;
   deleteCalls = 0;
+  /** Simulate a PUT that lands upstream but whose response times out. */
+  landButFailNextUpdate = false;
   private nextId = 500;
+
+  /** Seed an already-tagged playlist as if a prior create landed untracked. */
+  seed(marker: string, scheduleItems: ScheduleBlock["scheduleItems"], name = "seeded"): string {
+    const ref = String(this.nextId++);
+    this.playlists.set(ref, { name, isEnabled: true, scheduleItems, marker });
+    return ref;
+  }
 
   async createScheduleBlock(
     _s: StationId,
@@ -59,7 +68,29 @@ class FakePlayout implements PlayoutWritePort {
       existing.scheduleItems = block.scheduleItems;
       existing.isEnabled = true;
     }
+    if (this.landButFailNextUpdate) {
+      this.landButFailNextUpdate = false;
+      return err(DomainError.upstreamUnavailable("timed out after landing"));
+    }
     return ok(undefined);
+  }
+  async listTaggedBlocks(
+    _s: StationId,
+  ): Promise<
+    Result<{ ref: string; marker: string; snapshot: ScheduleBlockSnapshot }[], DomainError>
+  > {
+    return ok(
+      [...this.playlists.entries()].map(([ref, p]) => ({
+        ref,
+        marker: p.marker,
+        snapshot: {
+          name: p.name,
+          isEnabled: p.isEnabled,
+          scheduleItems: p.scheduleItems,
+          mediaIds: [],
+        },
+      })),
+    );
   }
   async removeScheduleBlock(_s: StationId, ref: string): Promise<Result<void, DomainError>> {
     this.deleteCalls += 1;
@@ -97,6 +128,7 @@ let write: FakePlayout;
 let repo: DrizzleProjectionRepo;
 let desired: ProjectableSlot[];
 let sinkCalls: { slotId: number; time: string; durationMin: number }[];
+let retractCalls: number[];
 let driver: PlayoutDriver;
 
 beforeEach(() => {
@@ -104,10 +136,17 @@ beforeEach(() => {
   repo = new DrizzleProjectionRepo(createDb(":memory:", silentLogger));
   desired = [oneSlot()];
   sinkCalls = [];
+  retractCalls = [];
   const slots: SlotSourcePort = { listProjectable: async () => ok([...desired]) };
   const sink: SlotSinkPort = {
     applyScheduleFromAzuracast: async (_s, slotId, sched) => {
       sinkCalls.push({ slotId, time: sched.time, durationMin: sched.durationMin });
+      return ok(undefined);
+    },
+    // Un-validating a slot removes it from the desired set (real behaviour).
+    retractSlot: async (_s, slotId) => {
+      retractCalls.push(slotId);
+      desired = desired.filter((s) => s.slotId !== slotId);
       return ok(undefined);
     },
   };
@@ -217,5 +256,78 @@ describe("PlayoutDriver reconcile loop (RFC 0001)", () => {
     expect(open[0]?.kind).toBe("deleted");
     // No blind recreate while it's unresolved.
     expect(write.createCalls).toBe(1);
+  });
+
+  test("create is idempotent by marker: a tagged playlist that already exists is adopted, not duplicated", async () => {
+    // Simulate a create that landed upstream but whose ledger row was never
+    // written (timed-out response) — the marker is present with no projection.
+    write.seed("[ondestudio:slot:1]", [{ startTime: 2200, endTime: 0, days: [4] }]);
+    await driver.runOnce();
+    expect(write.createCalls).toBe(0); // adopted, not re-created
+    expect(write.playlists.size).toBe(1);
+    const proj = await repo.getByObject("slot", 1, "wz-test");
+    expect(proj?.azId).not.toBeNull();
+    expect(proj?.reconcileState).toBe("synced");
+  });
+
+  test("keep-azuracast on a non-invertible manual edit refuses and leaves it untouched (never fight)", async () => {
+    await driver.runOnce();
+    const ref = [...write.playlists.keys()][0] ?? "";
+    const row = write.playlists.get(ref);
+    // Two schedule_items — cannot be represented as one OndeStudio recurrence.
+    if (row)
+      row.scheduleItems = [
+        { startTime: 1000, endTime: 1100, days: [1] },
+        { startTime: 1500, endTime: 1600, days: [3] },
+      ];
+    await driver.runOnce();
+    const item = (await driver.listReconciliations())[0];
+    if (!item) throw new Error("no reconciliation");
+
+    const result = await driver.resolve(item.id, "keep-azuracast");
+    expect(result.ok).toBe(false); // refused — can't pull it in
+    expect(sinkCalls).toHaveLength(0); // the OS slot was NOT changed
+    expect(await driver.listReconciliations()).toHaveLength(1); // still open
+    expect(write.playlists.get(ref)?.scheduleItems).toHaveLength(2); // edit untouched
+  });
+
+  test("keep-ondestudio on a playlist deleted in AzuraCast recreates it", async () => {
+    await driver.runOnce();
+    write.playlists.clear();
+    await driver.runOnce();
+    const item = (await driver.listReconciliations())[0];
+    if (!item) throw new Error("no reconciliation");
+
+    unwrap(await driver.resolve(item.id, "keep-ondestudio"));
+    expect(write.createCalls).toBe(2); // recreated
+    expect(write.playlists.size).toBe(1);
+    expect(await driver.listReconciliations()).toHaveLength(0);
+  });
+
+  test("keep-azuracast on a deleted playlist un-validates the slot and stops projecting it", async () => {
+    await driver.runOnce();
+    write.playlists.clear();
+    await driver.runOnce();
+    const item = (await driver.listReconciliations())[0];
+    if (!item) throw new Error("no reconciliation");
+
+    unwrap(await driver.resolve(item.id, "keep-azuracast"));
+    expect(retractCalls).toEqual([1]); // slot un-validated
+    expect(await repo.getByObject("slot", 1, "wz-test")).toBeNull(); // projection dropped
+    // And a later sweep does not resurrect it (the slot is no longer projectable).
+    await driver.runOnce();
+    expect(write.createCalls).toBe(1);
+    expect(await driver.listReconciliations()).toHaveLength(0);
+  });
+
+  test("an update that lands upstream but times out does not open a false drift", async () => {
+    await driver.runOnce();
+    desired = [oneSlot({ scheduleItems: [{ startTime: 2300, endTime: 100, days: [4] }] })];
+    write.landButFailNextUpdate = true; // the PUT applies but returns err
+    await driver.runOnce();
+    // The playlist did change upstream; the readback keeps last_seen truthful.
+    expect([...write.playlists.values()][0]?.scheduleItems[0]?.startTime).toBe(2300);
+    await driver.runOnce();
+    expect(await driver.listReconciliations()).toHaveLength(0); // no false "edited" drift
   });
 });

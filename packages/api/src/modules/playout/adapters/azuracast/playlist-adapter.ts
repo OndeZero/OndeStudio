@@ -19,6 +19,7 @@ interface AzPlaylistRow {
   id: number;
   name: string;
   is_enabled: boolean;
+  description?: string | null;
   schedule_items: AzScheduleItem[];
 }
 interface AzFileRow {
@@ -125,6 +126,33 @@ export class AzuracastPlaylistAdapter implements PlayoutWritePort {
     return ok(undefined);
   }
 
+  async listTaggedBlocks(
+    station: StationId,
+  ): Promise<
+    Result<{ ref: string; marker: string; snapshot: ScheduleBlockSnapshot }[], DomainError>
+  > {
+    const response = await this.client.getJson<AzPlaylistRow[]>(
+      `/api/station/${station.value}/playlists`,
+    );
+    if (!response.ok) return response;
+    const tagged: { ref: string; marker: string; snapshot: ScheduleBlockSnapshot }[] = [];
+    for (const row of response.value) {
+      const marker = extractMarker(row.description ?? "");
+      if (!marker) continue;
+      tagged.push({
+        ref: String(row.id),
+        marker,
+        snapshot: {
+          name: row.name,
+          isEnabled: row.is_enabled,
+          scheduleItems: row.schedule_items.map(fromAzItem),
+          mediaIds: [],
+        },
+      });
+    }
+    return ok(tagged);
+  }
+
   async readScheduleBlock(
     station: StationId,
     ref: string,
@@ -159,4 +187,9 @@ function toAzItem(item: ScheduleItem): AzScheduleItem {
 }
 function fromAzItem(item: AzScheduleItem): ScheduleItem {
   return { startTime: item.start_time, endTime: item.end_time, days: item.days ?? [] };
+}
+
+/** The first `[ondestudio:...]` marker in a free-text description, or null. */
+function extractMarker(description: string): string | null {
+  return description.match(/\[ondestudio:[^\]]*\]/)?.[0] ?? null;
 }

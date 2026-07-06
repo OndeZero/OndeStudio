@@ -201,6 +201,21 @@ export class SchedulingService {
     return ok(undefined);
   }
 
+  /**
+   * Un-validate a slot so the driver stops projecting it (RFC 0001,
+   * keep-azuracast on a manual delete): the slot stays on the grid as a
+   * `prebooked` hold — visible, not on air.
+   */
+  async retractSlot(station: StationId, slotId: number): Promise<Result<void, DomainError>> {
+    const existing = await this.getOwnSlot(station, slotId);
+    if (!existing.ok) return existing;
+    if (existing.value.slot.negotiationDefault === "validated") {
+      await this.deps.repo.updateSlotFields(slotId, { negotiationDefault: "prebooked" });
+      this.changed(station, "slot-updated");
+    }
+    return ok(undefined);
+  }
+
   async patchOccurrence(
     station: StationId,
     rawOccurrenceId: string,

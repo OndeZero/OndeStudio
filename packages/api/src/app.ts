@@ -149,6 +149,7 @@ export function buildServer(config: AppConfig = loadConfig()) {
       });
       return result.ok ? ok(undefined) : result;
     },
+    retractSlot: (station, slotId) => schedulingService.retractSlot(station, slotId),
   };
   const driver = new PlayoutDriver({
     write: new AzuracastPlaylistAdapter(azuracast, config.writeStations),

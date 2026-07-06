@@ -21,6 +21,8 @@ interface NormalizedBlock {
   isEnabled: boolean;
   scheduleItems: ScheduleItem[];
 }
+/** The observed upstream state for one marker: its AzuraCast id + snapshot. */
+type TaggedMap = Map<string, { ref: string; snapshot: ScheduleBlockSnapshot }>;
 
 /**
  * The write-back driver (M3, RFC 0001): keeps AzuraCast's tagged playlists in
@@ -29,11 +31,16 @@ interface NormalizedBlock {
  * fight an emergency fix (PD §6). Runs debounced after grid changes (the undo
  * window) and periodically (drift). Air is never in its path (invariant 1):
  * every upstream failure degrades the overlay and is retried next tick.
+ *
+ * Idempotency is by marker, not by DB row: each reconcile first OBSERVES every
+ * tagged block upstream (`listTaggedBlocks`), so a create that landed but whose
+ * ledger row was never written (timed-out response) is re-adopted, not
+ * duplicated.
  */
 export class PlayoutDriver {
   private readonly debounces = new Map<string, ReturnType<typeof setTimeout>>();
+  private lock: Promise<void> = Promise.resolve();
   private lastRunAt: Date | null = null;
-  private running = false;
 
   constructor(
     private readonly deps: {
@@ -69,20 +76,16 @@ export class PlayoutDriver {
     );
   }
 
-  /** One pass over every write station — the periodic drift sweep also calls this. */
+  /** One serialized pass over every write station (mutex: never interleave reads/writes). */
   async runOnce(): Promise<void> {
-    if (this.running) return; // never overlap: reads-then-writes must not interleave
-    this.running = true;
-    try {
+    await this.exclusive(async () => {
       for (const station of this.deps.writeStations) {
-        await this.reconcileStation(station);
+        // A station with a pending debounce is inside its undo window: observe
+        // and detect drift, but push nothing yet — an undo can still cancel it.
+        await this.reconcileStation(station, !this.debounces.has(station.value));
       }
       this.lastRunAt = this.deps.clock.now();
-    } catch (error) {
-      this.deps.logger.error("driver run crashed", { error: String(error) });
-    } finally {
-      this.running = false;
-    }
+    });
   }
 
   stop(): void {
@@ -90,14 +93,44 @@ export class PlayoutDriver {
     this.debounces.clear();
   }
 
-  private async reconcileStation(station: StationId): Promise<void> {
+  private async exclusive(fn: () => Promise<void>): Promise<void> {
+    const previous = this.lock;
+    let release: () => void = () => {};
+    this.lock = new Promise((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      await fn();
+    } catch (error) {
+      this.deps.logger.error("driver run crashed", { error: String(error) });
+    } finally {
+      release();
+    }
+  }
+
+  private async reconcileStation(station: StationId, allowWrites: boolean): Promise<void> {
+    // Observe by marker first (RFC step 1): one list replaces N readbacks and
+    // makes create idempotent.
+    const tagged = await this.deps.write.listTaggedBlocks(station);
+    if (!tagged.ok) {
+      this.deps.logger.warn("driver: observe failed", {
+        station: station.value,
+        reason: tagged.error.message,
+      });
+      return;
+    }
+    const byMarker: TaggedMap = new Map(
+      tagged.value.map((t) => [t.marker, { ref: t.ref, snapshot: t.snapshot }]),
+    );
+
     const desired = await this.deps.slots.listProjectable(station);
     if (!desired.ok) {
       this.deps.logger.warn("driver: desired-state read failed", {
         station: station.value,
         reason: desired.error.message,
       });
-      return; // AzuraCast/DB hiccup — leave everything as-is, retry next tick
+      return;
     }
     const desiredBySlot = new Map(desired.value.map((slot) => [slot.slotId, slot]));
     const projections = await this.deps.projections.listByStation(station.value);
@@ -105,14 +138,17 @@ export class PlayoutDriver {
 
     for (const proj of projections) {
       handled.add(proj.osObjectId);
-      const slot = desiredBySlot.get(proj.osObjectId);
-      await this.reconcileProjection(station, proj, slot);
+      await this.reconcileProjection(
+        station,
+        proj,
+        desiredBySlot.get(proj.osObjectId),
+        byMarker,
+        allowWrites,
+      );
     }
-
-    // Desired slots with no projection yet → first push.
     for (const slot of desired.value) {
-      if (handled.has(slot.slotId)) continue;
-      await this.createProjection(station, slot);
+      if (handled.has(slot.slotId) || !allowWrites) continue;
+      await this.pushCreateOrAdopt(station, slot, byMarker);
     }
   }
 
@@ -120,50 +156,43 @@ export class PlayoutDriver {
     station: StationId,
     proj: ProjectionRow,
     slot: ProjectableSlot | undefined,
+    byMarker: TaggedMap,
+    allowWrites: boolean,
   ): Promise<void> {
     const frozen = await this.deps.projections.hasOpenReconciliation(proj.id);
-
-    // Observe current AzuraCast state.
-    let cur: ScheduleBlockSnapshot | null = null;
-    if (proj.azId) {
-      const read = await this.deps.write.readScheduleBlock(station, proj.azId);
-      if (!read.ok) {
-        this.deps.logger.warn("driver: readback failed", {
-          station: station.value,
-          slotId: proj.osObjectId,
-        });
-        return; // transient — try next tick, never guess
-      }
-      cur = read.value;
-    }
+    const upstream = byMarker.get(proj.tagMarker);
+    const cur = upstream ? upstream.snapshot : null;
+    const curRef = upstream ? upstream.ref : proj.azId;
 
     if (frozen) {
       // Awaiting the team's decision: track AzuraCast but push nothing.
-      if (cur) await this.persist(proj, { lastSeen: normalizeSnapshot(cur), state: "drifted" });
+      if (cur)
+        await this.persist(proj, {
+          lastSeen: normalizeSnapshot(cur),
+          azId: curRef,
+          state: "drifted",
+        });
       return;
     }
 
     // Drift: AzuraCast changed under a synced projection → never overwrite it.
     if (proj.azId) {
       if (cur === null) {
-        if (slot) {
-          await this.openDrift(proj, "deleted", slot, null);
-          return;
-        }
-        await this.deps.projections.remove(proj.id); // slot gone too — just drop the ledger row
+        if (slot) return this.openDrift(proj, "deleted", slot, null);
+        await this.deps.projections.remove(proj.id); // slot gone too — drop the row
         return;
       }
       const seen = proj.lastSeen as NormalizedBlock | null;
       if (seen && !stableEqual(normalizeSnapshot(cur), seen)) {
-        await this.openDrift(proj, "edited", slot ?? null, cur);
-        return;
+        return this.openDrift(proj, "edited", slot ?? null, cur);
       }
     }
 
     // Synced. Retract if the slot is no longer projectable.
     if (!slot) {
-      if (proj.azId) {
-        const removed = await this.deps.write.removeScheduleBlock(station, proj.azId);
+      if (!allowWrites) return;
+      if (curRef && upstream) {
+        const removed = await this.deps.write.removeScheduleBlock(station, curRef);
         if (!removed.ok) {
           this.deps.logger.warn("driver: retract delete failed", { slotId: proj.osObjectId });
           return; // keep the row; retry next tick
@@ -173,73 +202,113 @@ export class PlayoutDriver {
       return;
     }
 
-    // Push OndeStudio's desired state when AzuraCast doesn't already match it.
     const desiredNorm = normalizeDesired(slot);
-    if (cur !== null && stableEqual(normalizeSnapshot(cur), desiredNorm)) return; // already in sync
+    if (cur !== null && stableEqual(normalizeSnapshot(cur), desiredNorm)) {
+      // Already in sync; record the (possibly adopted) ref so drift has a baseline.
+      if (proj.azId !== curRef) {
+        await this.persist(proj, {
+          lastSeen: desiredNorm,
+          azId: curRef,
+          state: "synced",
+          lastPushed: desiredNorm,
+          touch: true,
+        });
+      }
+      return;
+    }
+    if (!allowWrites) return; // within the undo window — observe only
     if (!proj.azId || cur === null) {
-      await this.createProjection(station, slot); // upserts onto the same ledger row
+      await this.pushCreateOrAdopt(station, slot, byMarker);
       return;
     }
-    const block = blockFor(slot, proj.tagMarker);
-    const updated = await this.deps.write.updateScheduleBlock(station, proj.azId, block);
-    if (!updated.ok) {
-      this.deps.logger.warn("driver: update push failed", { slotId: slot.slotId });
-      return;
-    }
-    if (slot.mediaIds.length > 0)
-      await this.deps.write.setBlockMedia(station, proj.azId, slot.mediaIds);
-    await this.persistAfterPush(station, proj.azId, slot, desiredNorm);
+    const upd = await this.deps.write.updateScheduleBlock(
+      station,
+      curRef ?? "",
+      blockFor(slot, proj.tagMarker),
+    );
+    if (slot.mediaIds.length > 0 && curRef)
+      await this.deps.write.setBlockMedia(station, curRef, slot.mediaIds);
+    if (!upd.ok) this.deps.logger.warn("driver: update push failed", { slotId: slot.slotId });
+    // Refresh from the ACTUAL upstream state whether or not the write reported
+    // ok: a timed-out PUT that landed must not read as our own edit next tick.
+    await this.refreshBookkeeping(station, slot, curRef ?? "", desiredNorm);
   }
 
-  private async createProjection(station: StationId, slot: ProjectableSlot): Promise<void> {
+  private async pushCreateOrAdopt(
+    station: StationId,
+    slot: ProjectableSlot,
+    byMarker: TaggedMap,
+  ): Promise<void> {
     const marker = markerFor(slot.slotId);
+    const upstream = byMarker.get(marker);
+    if (upstream) {
+      // ADOPT an already-tagged playlist (e.g. from a timed-out create) — no
+      // second POST. The next reconcile pushes it toward `desired` if it differs.
+      await this.persistNew(
+        station,
+        slot,
+        upstream.ref,
+        normalizeSnapshot(upstream.snapshot),
+        normalizeSnapshot(upstream.snapshot),
+      );
+      return;
+    }
     const created = await this.deps.write.createScheduleBlock(station, blockFor(slot, marker));
     if (!created.ok) {
       this.deps.logger.warn("driver: create push failed", {
         slotId: slot.slotId,
         reason: created.error.message,
       });
-      return;
+      return; // if it actually landed, next reconcile adopts it by marker
     }
-    if (slot.mediaIds.length > 0) {
+    if (slot.mediaIds.length > 0)
       await this.deps.write.setBlockMedia(station, created.value.ref, slot.mediaIds);
-    }
     const readback = await this.deps.write.readScheduleBlock(station, created.value.ref);
     const lastSeen =
       readback.ok && readback.value ? normalizeSnapshot(readback.value) : normalizeDesired(slot);
-    await this.deps.projections.upsert({
-      osObjectType: "slot",
-      osObjectId: slot.slotId,
-      stationId: station.value,
-      azKind: "playlist",
-      azId: created.value.ref,
-      tagMarker: marker,
-      lastPushed: normalizeDesired(slot),
-      lastSeen,
-      reconcileState: "synced",
-      lastSyncedAt: this.deps.clock.now().toISOString(),
-    });
+    await this.persistNew(station, slot, created.value.ref, normalizeDesired(slot), lastSeen);
     this.deps.logger.info("driver: projected slot", {
       station: station.value,
       slotId: slot.slotId,
     });
   }
 
-  private async persistAfterPush(
+  private async refreshBookkeeping(
     station: StationId,
-    azId: string,
     slot: ProjectableSlot,
+    ref: string,
     desiredNorm: NormalizedBlock,
   ): Promise<void> {
-    const readback = await this.deps.write.readScheduleBlock(station, azId);
+    const readback = await this.deps.write.readScheduleBlock(station, ref);
     const lastSeen =
       readback.ok && readback.value ? normalizeSnapshot(readback.value) : desiredNorm;
     const existing = await this.deps.projections.getByObject("slot", slot.slotId, station.value);
     if (!existing) return;
     await this.deps.projections.upsert({
       ...toUpsert(existing),
-      azId,
+      azId: ref,
       lastPushed: desiredNorm,
+      lastSeen,
+      reconcileState: "synced",
+      lastSyncedAt: this.deps.clock.now().toISOString(),
+    });
+  }
+
+  private async persistNew(
+    station: StationId,
+    slot: ProjectableSlot,
+    ref: string,
+    lastPushed: NormalizedBlock,
+    lastSeen: NormalizedBlock,
+  ): Promise<void> {
+    await this.deps.projections.upsert({
+      osObjectType: "slot",
+      osObjectId: slot.slotId,
+      stationId: station.value,
+      azKind: "playlist",
+      azId: ref,
+      tagMarker: markerFor(slot.slotId),
+      lastPushed,
       lastSeen,
       reconcileState: "synced",
       lastSyncedAt: this.deps.clock.now().toISOString(),
@@ -274,60 +343,107 @@ export class PlayoutDriver {
 
   private async persist(
     proj: ProjectionRow,
-    patch: { lastSeen: unknown; state: "synced" | "drifted" },
+    patch: {
+      lastSeen?: unknown;
+      azId?: string | null;
+      lastPushed?: unknown;
+      state: "synced" | "drifted";
+      touch?: boolean;
+    },
   ): Promise<void> {
     await this.deps.projections.upsert({
       ...toUpsert(proj),
-      lastSeen: patch.lastSeen,
+      ...(patch.azId !== undefined ? { azId: patch.azId } : {}),
+      ...(patch.lastSeen !== undefined ? { lastSeen: patch.lastSeen } : {}),
+      ...(patch.lastPushed !== undefined ? { lastPushed: patch.lastPushed } : {}),
       reconcileState: patch.state,
+      lastSyncedAt: patch.touch ? this.deps.clock.now().toISOString() : proj.lastSyncedAt,
     });
   }
 
-  /** Pick a side (PD §6): re-push OndeStudio, or pull AzuraCast's edit into the slot. */
+  /** Pick a side (PD §6). Serialized against the reconcile loop; re-runs after. */
   async resolve(
     reconciliationId: number,
     resolution: "keep-ondestudio" | "keep-azuracast",
   ): Promise<Result<void, DomainError>> {
-    const item = await this.deps.projections.getOpenReconciliation(reconciliationId);
-    if (!item) return err(DomainError.notFound("reconciliation"));
-    const station = StationId.parse(item.projection.stationId);
-    if (!station.ok) return station;
+    let rerun = false;
+    let outcome: Result<void, DomainError> = ok(undefined);
+    await this.exclusive(async () => {
+      const item = await this.deps.projections.getOpenReconciliation(reconciliationId);
+      if (!item) {
+        outcome = err(DomainError.notFound("reconciliation"));
+        return;
+      }
+      const station = StationId.parse(item.projection.stationId);
+      if (!station.ok) {
+        outcome = station;
+        return;
+      }
+      const proj = item.projection;
+      const read = proj.azId
+        ? await this.deps.write.readScheduleBlock(station.value, proj.azId)
+        : null;
+      const snapshot = read?.ok ? read.value : null;
 
-    if (resolution === "keep-azuracast") {
-      const azId = item.projection.azId;
-      const cur = azId ? await this.deps.write.readScheduleBlock(station.value, azId) : null;
-      const snapshot = cur?.ok ? cur.value : null;
-      const inverted = snapshot ? invertToRecurrence(snapshot.scheduleItems) : null;
-      if (inverted) {
+      if (resolution === "keep-azuracast") {
+        if (snapshot === null) {
+          // AzuraCast deleted the playlist and the team accepts it: un-validate
+          // the slot so the driver stops projecting it (it stays a grid hold).
+          const retracted = await this.deps.sink.retractSlot(station.value, proj.osObjectId);
+          if (!retracted.ok) {
+            outcome = retracted;
+            return;
+          }
+          await this.deps.projections.remove(proj.id);
+          await this.deps.projections.resolveReconciliation(
+            reconciliationId,
+            resolution,
+            this.deps.clock.now().toISOString(),
+          );
+          return; // slot no longer projectable — no re-run needed
+        }
+        const inverted = invertToRecurrence(snapshot.scheduleItems);
+        if (!inverted) {
+          // Can't represent this edit in OndeStudio → do NOT overwrite it; leave
+          // the reconciliation open (never fight a manual edit, PD §6).
+          outcome = err(
+            DomainError.conflict(
+              "this AzuraCast schedule can't be pulled into OndeStudio (multiple items or every-day) — simplify it upstream, or choose keep-OndeStudio",
+            ),
+          );
+          return;
+        }
         const applied = await this.deps.sink.applyScheduleFromAzuracast(
           station.value,
-          item.projection.osObjectId,
+          proj.osObjectId,
           inverted,
         );
-        if (!applied.ok) return applied;
-      } else {
-        this.deps.logger.warn("driver: cannot invert AC schedule; accepting baseline only", {
-          reconciliationId,
+        if (!applied.ok) {
+          outcome = applied;
+          return;
+        }
+        await this.persist(proj, {
+          lastSeen: normalizeSnapshot(snapshot),
+          lastPushed: normalizeSnapshot(snapshot),
+          state: "synced",
         });
+      } else {
+        // keep-ondestudio: re-push OndeStudio over the edit; recreate if deleted.
+        if (snapshot === null) {
+          await this.persist(proj, { azId: null, state: "synced" });
+        } else {
+          await this.persist(proj, { lastSeen: normalizeSnapshot(snapshot), state: "synced" });
+        }
       }
-      await this.persist(item.projection, {
-        lastSeen: snapshot ? normalizeSnapshot(snapshot) : item.projection.lastSeen,
-        state: "synced",
-      });
-    } else {
-      // keep-ondestudio: unfreeze; the next reconcile re-pushes over the manual edit.
-      await this.persist(item.projection, { lastSeen: item.projection.lastSeen, state: "synced" });
-    }
-
-    await this.deps.projections.resolveReconciliation(
-      reconciliationId,
-      resolution,
-      this.deps.clock.now().toISOString(),
-    );
-    // Re-push (keep-ondestudio) or re-baseline (keep-azuracast) before returning,
-    // so the resolve response already reflects the settled state.
-    await this.runOnce();
-    return ok(undefined);
+      await this.deps.projections.resolveReconciliation(
+        reconciliationId,
+        resolution,
+        this.deps.clock.now().toISOString(),
+      );
+      rerun = true;
+    });
+    if (rerun) await this.runOnce();
+    return outcome;
   }
 
   async listProjections(station: StationId): Promise<ProjectionRow[]> {
@@ -344,11 +460,9 @@ export class PlayoutDriver {
 function markerFor(slotId: number): string {
   return `[ondestudio:slot:${slotId}]`;
 }
-
 function blockFor(slot: ProjectableSlot, marker: string): ScheduleBlock {
   return { name: slot.name, tagMarker: marker, scheduleItems: slot.scheduleItems };
 }
-
 function normalizeDesired(slot: ProjectableSlot): NormalizedBlock {
   return { name: slot.name, isEnabled: true, scheduleItems: sortItems(slot.scheduleItems) };
 }
@@ -371,7 +485,6 @@ function sortItems(items: ScheduleItem[]): ScheduleItem[] {
 function stableEqual(a: NormalizedBlock, b: NormalizedBlock): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
-
 function describeItems(items: ScheduleItem[]): string {
   const days = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   return (

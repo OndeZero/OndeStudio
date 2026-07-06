@@ -42,7 +42,12 @@ export interface SchedulingRepo {
   insertSlot(props: Omit<SlotProps, "id">): Promise<SlotRecord>;
   updateSlotFields(
     id: number,
-    fields: { title?: string | null; rule?: RecurrenceRule; durationMin?: number },
+    fields: {
+      title?: string | null;
+      rule?: RecurrenceRule;
+      durationMin?: number;
+      negotiationDefault?: NegotiationState;
+    },
   ): Promise<void>;
   deleteSlot(id: number): Promise<void>;
   findOrCreateShow(name: string): Promise<{ id: number; name: string }>;
@@ -110,11 +115,17 @@ export class DrizzleSchedulingRepo implements SchedulingRepo {
 
   async updateSlotFields(
     id: number,
-    fields: { title?: string | null; rule?: RecurrenceRule; durationMin?: number },
+    fields: {
+      title?: string | null;
+      rule?: RecurrenceRule;
+      durationMin?: number;
+      negotiationDefault?: NegotiationState;
+    },
   ): Promise<void> {
     const set: Record<string, unknown> = { updatedAt: new Date().toISOString() };
     if (fields.title !== undefined) set.title = fields.title;
     if (fields.durationMin !== undefined) set.durationMin = fields.durationMin;
+    if (fields.negotiationDefault !== undefined) set.negotiationDefault = fields.negotiationDefault;
     if (fields.rule !== undefined) {
       const db = fields.rule.toDb();
       set.rrule = db.rrule;
