@@ -71,18 +71,18 @@ async function submit(): Promise<void> {
 
 <template>
   <div class="dialog-backdrop" @click.self="emit('close')">
-    <form class="dialog" @submit.prevent="submit">
-      <header class="dlg-head">
+    <form class="dialog os-surface" @submit.prevent="submit">
+      <header class="os-dlg-head">
         <strong>New slot</strong>
-        <button type="button" class="dlg-close" title="Close" @click="emit('close')">×</button>
+        <button type="button" class="os-close" title="Close" @click="emit('close')">×</button>
       </header>
 
-      <div class="kind-row" role="radiogroup" aria-label="Slot kind">
+      <div class="os-row" role="radiogroup" aria-label="Slot kind">
         <button
           v-for="k in SLOT_KINDS"
           :key="k"
           type="button"
-          class="kind-chip"
+          class="os-chip"
           :class="{ active: kind === k }"
           role="radio"
           :aria-checked="kind === k"
@@ -92,46 +92,46 @@ async function submit(): Promise<void> {
         </button>
       </div>
 
-      <label v-if="needsShow" class="dlg-field">
+      <label v-if="needsShow" class="os-field">
         show name
         <input v-model="showName" type="text" placeholder="e.g. Minuit Décousu" />
       </label>
-      <label class="dlg-field">
-        title <span v-if="needsShow" class="hint">(optional — defaults to the show name)</span>
+      <label class="os-field">
+        title <span v-if="needsShow" class="os-hint">(optional — defaults to the show name)</span>
         <input v-model="title" type="text" :placeholder="needsShow ? 'slot label override' : 'e.g. Maigre — studio live'" />
       </label>
 
-      <div class="dlg-row">
-        <label class="dlg-field">
+      <div class="os-row">
+        <label class="os-field">
           start
           <input v-model="time" type="time" step="900" />
         </label>
-        <label class="dlg-field">
+        <label class="os-field">
           duration (min)
           <input v-model.number="durationMin" type="number" min="15" max="1440" step="15" />
         </label>
       </div>
 
       <fieldset class="dlg-recurrence">
-        <legend class="hint">recurrence</legend>
-        <label class="dlg-radio">
+        <legend class="os-hint">recurrence</legend>
+        <label class="os-radio">
           <input v-model="weekly" type="radio" :value="true" name="recurrence" />
           weekly every {{ weekdayName }}
         </label>
-        <label class="dlg-radio">
+        <label class="os-radio">
           <input v-model="weekly" type="radio" :value="false" name="recurrence" />
           one-off on {{ formatDayLabel(props.draft.dayIso) }}
         </label>
       </fieldset>
 
-      <label class="dlg-check">
+      <label class="os-check">
         <input v-model="bornValidated" type="checkbox" />
         validated (nothing to negotiate)
       </label>
 
       <footer class="dlg-foot">
-        <button type="button" class="btn-ghost" @click="emit('close')">Cancel</button>
-        <button type="submit" class="btn-primary" :disabled="!valid || submitting">
+        <button type="button" class="os-btn os-btn--ghost" @click="emit('close')">Cancel</button>
+        <button type="submit" class="os-btn os-btn--primary" :disabled="!valid || submitting">
           {{ submitting ? "Creating…" : "Create slot" }}
         </button>
       </footer>
@@ -140,6 +140,8 @@ async function submit(): Promise<void> {
 </template>
 
 <style scoped>
+/* The look lives in ui/forms.css (os-*); only the backdrop, sizing and the
+   recurrence fieldset are dialog-specific. */
 .dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -149,60 +151,9 @@ async function submit(): Promise<void> {
   background: rgba(0, 0, 0, 0.5);
 }
 
-.dialog {
-  display: grid;
-  gap: var(--space-3);
-  width: min(24rem, 94vw);
-  padding: var(--space-4);
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-}
+.dialog { width: min(24rem, 94vw); }
 
-.dlg-head { display: flex; align-items: baseline; justify-content: space-between; }
-.dlg-close {
-  padding: 0 var(--space-2);
-  background: none;
-  border: none;
-  color: var(--color-text-muted);
-  font-size: var(--text-lg);
-  cursor: pointer;
-}
-
-.kind-row { display: flex; flex-wrap: wrap; gap: var(--space-1); }
-.kind-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35em;
-  padding: 1px var(--space-2);
-  background: var(--color-surface);
-  color: var(--color-text-muted);
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  font-size: var(--text-xs);
-  cursor: pointer;
-}
-.kind-chip.active {
-  background: var(--color-accent-soft);
-  border-color: var(--color-accent);
-  color: var(--color-text);
-}
 .kind-glyph { font-family: var(--font-mono); }
-
-.dlg-field { display: grid; gap: 2px; color: var(--color-text-muted); font-size: var(--text-xs); }
-.dlg-field input {
-  padding: var(--space-1) var(--space-2);
-  background: var(--color-surface);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-}
-.dlg-field input[type="time"],
-.dlg-field input[type="number"] { font-family: var(--font-mono); width: 7rem; }
-
-.dlg-row { display: flex; gap: var(--space-3); }
 
 .dlg-recurrence {
   display: grid;
@@ -212,36 +163,8 @@ async function submit(): Promise<void> {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
 }
-.dlg-radio,
-.dlg-check {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-}
-
-.hint { color: var(--color-text-muted); font-size: var(--text-xs); }
 
 .dlg-foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
-
-.btn-ghost {
-  padding: var(--space-1) var(--space-3);
-  background: none;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-.btn-primary {
-  padding: var(--space-1) var(--space-3);
-  background: var(--color-accent-soft);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-md);
-  color: var(--color-accent);
-  font-weight: 600;
-  cursor: pointer;
-}
-.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
 @media (max-width: 720px) {
   .dialog-backdrop { place-items: end stretch; }

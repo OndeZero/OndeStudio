@@ -125,11 +125,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div ref="rootEl" class="quick-edit" :style="positionVars" role="dialog" aria-label="Edit occurrence">
-    <header class="qe-head">
+  <div ref="rootEl" class="quick-edit os-surface" :style="positionVars" role="dialog" aria-label="Edit occurrence">
+    <header class="os-dlg-head">
       <span class="qe-glyph">{{ SLOT_KIND_GLYPHS[occ.kind] }}</span>
       <strong class="qe-title">{{ occ.title }}</strong>
-      <button type="button" class="qe-close" title="Close" @click="emit('close')">×</button>
+      <button type="button" class="os-close" title="Close" @click="emit('close')">×</button>
     </header>
     <p class="qe-when">
       {{ formatDayLabel(dayIso) }} · {{ formatHm(new Date(occ.startsAt), store.zone) }}–{{
@@ -138,12 +138,12 @@ onUnmounted(() => {
       <span v-if="occ.moved" title="Moved from its series time">↷ moved</span>
     </p>
 
-    <div class="qe-row">
-      <label class="qe-field">
+    <div class="os-row">
+      <label class="os-field">
         start
         <input v-model="startTime" type="time" step="900" :disabled="locked" @change="applyTime" />
       </label>
-      <label class="qe-field">
+      <label class="os-field">
         duration (min)
         <input
           v-model.number="durationMin"
@@ -157,17 +157,17 @@ onUnmounted(() => {
       </label>
     </div>
 
-    <div class="qe-row qe-states">
+    <div class="os-row os-row--nowrap">
       <span class="state-chip" :style="{ borderColor: `var(--state-${occ.negotiationState})` }">
         {{ occ.negotiationState }}
       </span>
       <template v-if="transitions.length > 0">
-        <span class="qe-arrow">→</span>
+        <span class="os-hint">→</span>
         <button
           v-for="target in transitions"
           :key="target"
           type="button"
-          class="transition-btn"
+          class="os-chip"
           :style="{ borderColor: `var(--state-${target})`, color: `var(--state-${target})` }"
           @click="transition(target)"
         >
@@ -176,12 +176,12 @@ onUnmounted(() => {
       </template>
     </div>
 
-    <div class="qe-row qe-flags">
+    <div class="os-row">
       <button
         v-for="flag in ISSUE_FLAGS"
         :key="flag"
         type="button"
-        class="flag-chip"
+        class="os-chip flag-chip"
         :class="{ active: occ.issueFlags.includes(flag) }"
         @click="toggleFlag(flag)"
       >
@@ -189,18 +189,18 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <p v-if="occ.contentDurationMin !== null" class="qe-content">
+    <p v-if="occ.contentDurationMin !== null" class="qe-content os-hint">
       content: {{ occ.contentDurationMin }} min ({{ occ.contentState }})
     </p>
-    <p v-else class="qe-content">content: {{ occ.contentState }}</p>
+    <p v-else class="qe-content os-hint">content: {{ occ.contentState }}</p>
 
     <div v-if="slot" class="qe-series">
       <p class="qe-series-head">series →</p>
-      <label class="qe-field qe-series-title">
+      <label class="os-field qe-series-title">
         title
         <input v-model="slotTitle" type="text" :placeholder="slot.showName ?? 'series title'" @change="saveSlotTitle" />
       </label>
-      <button type="button" class="qe-delete" @click="removeSlot">
+      <button type="button" class="os-btn os-btn--danger" @click="removeSlot">
         delete slot (deletes every occurrence)
       </button>
     </div>
@@ -208,73 +208,38 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* The look lives in ui/forms.css (os-*); only what is truly popover-specific
+   stays scoped: anchoring, the bottom sheet, and the per-state pills. */
 .quick-edit {
   position: fixed;
   top: var(--qe-y);
   left: var(--qe-x);
   z-index: 60;
-  display: grid;
-  gap: var(--space-2);
   width: 20.5rem;
-  padding: var(--space-3);
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
-  font-size: var(--text-sm);
 }
 
-.qe-head { display: flex; align-items: baseline; gap: var(--space-2); }
 .qe-glyph { font-family: var(--font-mono); }
 .qe-title { flex: 1; overflow-wrap: anywhere; }
-.qe-close {
-  padding: 0 var(--space-2);
-  background: none;
-  border: none;
-  color: var(--color-text-muted);
-  font-size: var(--text-lg);
-  cursor: pointer;
-}
 .qe-when { margin: 0; color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
+.qe-content { margin: 0; }
 
-.qe-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-
-.qe-field {
-  display: grid;
-  gap: 2px;
-  color: var(--color-text-muted);
-  font-size: var(--text-xs);
-}
-.qe-field input {
-  padding: var(--space-1);
-  background: var(--color-surface);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-}
-.qe-field input[type="number"] { width: 6.5rem; }
-
-/* One pill shape for state chip, transition buttons and flag toggles. */
-.state-chip,
-.transition-btn,
-.flag-chip {
+/* The current negotiation state: a read-only pill, border colored inline. */
+.state-chip {
   padding: 1px var(--space-2);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border: 2px solid var(--color-border);
   border-radius: 999px;
   font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
 }
-.state-chip { border-width: 2px; font-weight: 600; background: none; }
-.qe-arrow { color: var(--color-text-muted); }
-.transition-btn,
-.flag-chip { cursor: pointer; }
-.transition-btn:hover { background: var(--color-accent-soft); }
-.flag-chip { color: var(--color-text-muted); }
-.flag-chip.active { border-color: var(--flag-warning); color: var(--flag-warning); }
 
-.qe-content { margin: 0; color: var(--color-text-muted); font-size: var(--text-xs); }
+/* Active issue flags stay warning-yellow — never the accent (docs/2 §8.4). */
+.flag-chip.active {
+  background: color-mix(in srgb, var(--flag-warning) 12%, transparent);
+  border-color: var(--flag-warning);
+  color: var(--flag-warning);
+}
+
 .qe-series {
   display: grid;
   gap: var(--space-2);
@@ -290,18 +255,7 @@ onUnmounted(() => {
   text-transform: uppercase;
 }
 .qe-series-title input { width: 100%; }
-
-.qe-delete {
-  justify-self: start;
-  padding: var(--space-1) var(--space-2);
-  background: none;
-  border: 1px solid var(--color-danger);
-  border-radius: var(--radius-sm);
-  color: var(--color-danger);
-  font-size: var(--text-xs);
-  cursor: pointer;
-}
-.qe-delete:hover { background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
+.qe-series > .os-btn { justify-self: start; }
 
 @media (max-width: 720px) {
   .quick-edit {

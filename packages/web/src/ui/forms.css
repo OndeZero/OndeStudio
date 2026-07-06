@@ -1,0 +1,152 @@
+/*
+ * Shared form primitives — ONE visual language for every dialog, popover and
+ * form surface: the M1 grid quick-edit and create-slot today, the M2 board,
+ * show page and login next. PD §8.1 (few views, few clicks) only holds if the
+ * few views speak the same dialect, so these os-* classes are the project
+ * convention (docs/2 §3.3: ui/ = themed primitives).
+ *
+ * Theme tokens ONLY: the sole color expressions here are tokens and
+ * color-mix() derivations of tokens, so every theme (dark, light, future
+ * ones) works untouched.
+ */
+
+/* Surface — the box every dialog/popover shares. */
+.os-surface {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  /* Shadow from the bg token: deep in the dark theme, a faint haze in the
+     light one (where the border carries the edge). */
+  box-shadow: 0 10px 40px color-mix(in srgb, var(--color-bg) 55%, transparent);
+  font-size: var(--text-sm);
+}
+
+/* Header row: title left, close button right. */
+.os-dlg-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.os-close {
+  padding: 0 var(--space-2);
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-lg);
+  cursor: pointer;
+}
+
+/* Labelled field: a muted micro-label above its control. */
+.os-field {
+  display: grid;
+  gap: 2px;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+.os-field input,
+.os-field select,
+.os-field textarea {
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+/* Times and numbers read best tabular; one width keeps paired fields aligned. */
+.os-field input[type="time"],
+.os-field input[type="number"] {
+  width: 7rem;
+  font-family: var(--font-mono);
+}
+
+/* Rows of controls; --nowrap = single line, scrolls instead of wrapping. */
+.os-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.os-row--nowrap {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+/* Pill chip — toggles and small actions, same dialect as the toolbar filters. */
+.os-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 1px var(--space-2);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+.os-chip:hover {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+}
+.os-chip.active {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+/* Buttons. */
+.os-btn {
+  padding: var(--space-1) var(--space-3);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+.os-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.os-btn--primary {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+.os-btn--ghost {
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+}
+.os-btn--danger {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+.os-btn--danger:hover {
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+}
+
+/* Inline check/radio rows and fine print. */
+.os-check,
+.os-radio {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.os-hint {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
