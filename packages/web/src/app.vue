@@ -1,7 +1,63 @@
 <script setup lang="ts">
+import { watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { railOpen } from "./features/grid/rail-state";
+import { dismissToast, toasts } from "./features/grid/toast";
+import { useAuthStore } from "./stores/auth";
+import { useNotificationsStore } from "./stores/notifications";
 import { useStationStore } from "./stores/station";
 
+/**
+ * The shell: wordmark, main nav, notifications bell, station switcher and
+ * session controls — plus the app-wide toast stack (moved out of the grid
+ * at M2: board, shows and media reuse the same channel).
+ */
 const stationStore = useStationStore();
+const auth = useAuthStore();
+const notifications = useNotificationsStore();
+const router = useRouter();
+const route = useRoute();
+
+// Active-state matching is manual: /board/:id? style records make
+// router-link-active unreliable for the bare link targets.
+const NAV = [
+  { to: "/", label: "Grid", match: /^\/$/ },
+  { to: "/board", label: "Board", match: /^\/board/ },
+  { to: "/shows", label: "Shows", match: /^\/shows/ },
+  { to: "/media", label: "Media", match: /^\/media/ },
+  { to: "/onair", label: "On air", match: /^\/onair/ },
+];
+
+// The inbox lives while a session does; a station switch re-subscribes the
+// board SSE stream to the new station.
+watch(
+  [() => auth.me?.id ?? null, () => stationStore.current],
+  ([userId]) => {
+    if (userId !== null) notifications.start();
+    else notifications.stop();
+  },
+  { immediate: true },
+);
+
+/** Bell: on the grid the rail IS the inbox — toggle it; elsewhere, go there. */
+function onBellClick(): void {
+  if (route.name === "grid") {
+    railOpen.value = !railOpen.value;
+  } else {
+    railOpen.value = true;
+    void router.push("/");
+  }
+}
+
+async function onLogout(): Promise<void> {
+  try {
+    await auth.logout();
+  } catch {
+    // The cookie may already be dead — leaving locally is always right.
+    auth.clearSession();
+  }
+  void router.push({ name: "login" });
+}
 </script>
 
 <template>
@@ -9,22 +65,56 @@ const stationStore = useStationStore();
     <header class="shell-header">
       <!-- Kept as one text run so the accessible name is exactly "OndeStudio". -->
       <h1 class="wordmark">Onde<span class="wordmark-accent">Studio</span></h1>
-      <nav class="shell-nav" aria-label="Main">
-        <RouterLink to="/">Grid</RouterLink>
-        <RouterLink to="/onair">On air</RouterLink>
-      </nav>
-      <label class="station-switcher">
-        <span class="station-switcher-label">station</span>
-        <select v-model="stationStore.current" aria-label="Active station">
-          <option v-for="slug in stationStore.available" :key="slug" :value="slug">
-            {{ slug }}
-          </option>
-        </select>
-      </label>
+      <template v-if="auth.me">
+        <nav class="shell-nav" aria-label="Main">
+          <RouterLink
+            v-for="item in NAV"
+            :key="item.to"
+            :to="item.to"
+            :class="{ active: item.match.test(route.path) }"
+          >
+            {{ item.label }}
+          </RouterLink>
+        </nav>
+        <div class="shell-side">
+          <button
+            type="button"
+            class="bell"
+            title="Notifications"
+            aria-label="Notifications"
+            @click="onBellClick"
+          >
+            ◉<span v-if="notifications.unreadCount > 0" class="bell-count">{{
+              notifications.unreadCount
+            }}</span>
+          </button>
+          <label class="station-switcher">
+            <span class="station-switcher-label">station</span>
+            <select v-model="stationStore.current" aria-label="Active station">
+              <option v-for="slug in stationStore.available" :key="slug" :value="slug">
+                {{ slug }}
+              </option>
+            </select>
+          </label>
+          <span class="whoami" :title="auth.me.email">{{ auth.me.displayName }}</span>
+          <button type="button" class="os-btn os-btn--ghost logout-btn" @click="onLogout">
+            log out
+          </button>
+        </div>
+      </template>
     </header>
     <main class="shell-main">
       <router-view />
     </main>
+
+    <div class="toast-stack" aria-live="polite">
+      <div v-for="toast in toasts" :key="toast.id" class="toast" :class="`toast-${toast.kind}`">
+        <span class="toast-message">{{ toast.message }}</span>
+        <button type="button" class="toast-dismiss" title="Dismiss" @click="dismissToast(toast.id)">
+          ×
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -34,7 +124,7 @@ const stationStore = useStationStore();
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--space-2) var(--space-3);
   padding: var(--space-3) var(--space-4);
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
@@ -56,6 +146,7 @@ const stationStore = useStationStore();
 
 .shell-nav {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-3);
 }
 
@@ -70,8 +161,45 @@ const stationStore = useStationStore();
   color: var(--color-text);
 }
 
-.shell-nav a.router-link-exact-active {
+.shell-nav a.active {
   color: var(--color-accent);
+}
+
+.shell-side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bell {
+  position: relative;
+  padding: var(--space-1) var(--space-2);
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: var(--text-md);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+.bell:hover {
+  color: var(--color-text);
+}
+.bell-count {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 1.1rem;
+  padding: 0 3px;
+  background: var(--color-accent);
+  /* bg token doubles as contrast color, same trick as the LIVE badge. */
+  color: var(--color-bg);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.4;
 }
 
 .station-switcher {
@@ -100,6 +228,15 @@ const stationStore = useStationStore();
   border-color: var(--color-accent);
 }
 
+.whoami {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.logout-btn {
+  font-size: var(--text-xs);
+}
+
 /* The shell owns the viewport; pages decide their own scrolling. The grid
    needs full width and an internal scroll container (docs/2 §8.4), so the
    old max-width moved into the pages that want a narrow column. */
@@ -115,5 +252,48 @@ const stationStore = useStationStore();
   flex-direction: column;
   min-height: 0;
   overflow: auto;
+}
+
+/* App-wide toast channel (features/grid/toast.ts) — errors after optimistic
+   rollbacks, short confirmations otherwise. */
+.toast-stack {
+  position: fixed;
+  bottom: var(--space-4);
+  left: 50%;
+  z-index: 80;
+  display: grid;
+  gap: var(--space-2);
+  transform: translateX(-50%);
+  width: min(28rem, 92vw);
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  font-size: var(--text-sm);
+}
+.toast-error {
+  border-left: 3px solid var(--color-danger);
+}
+.toast-info {
+  border-left: 3px solid var(--color-accent);
+}
+.toast-message {
+  overflow-wrap: anywhere;
+}
+.toast-dismiss {
+  padding: 0 var(--space-1);
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: var(--text-md);
+  cursor: pointer;
 }
 </style>

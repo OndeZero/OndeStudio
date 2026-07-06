@@ -74,6 +74,16 @@
   --flag-warning: #ffd166;
 
   /*
+   * M2 board intent hues (PD §5.2): one badge per card intent, deliberately
+   * outside both grid state families so a board card never reads as a
+   * negotiation or content state.
+   */
+  --intent-discussion: #6fa8dc;
+  --intent-idea: #b58ae0;
+  --intent-prospect: #e08bb1;
+  --intent-task: #63c19a;
+
+  /*
    * M1 grid chrome (docs/2 §8.4): line-work, derived-rotation ghosts and
    * insert-rule bands. The band hue is violet on purpose — outside both the
    * negotiation and content palettes, so overlay layers never read as state.
@@ -118,6 +128,11 @@
   --content-aired: #9aa1ac;
 
   --flag-warning: #a97b00;
+
+  --intent-discussion: #2f6ea8;
+  --intent-idea: #7a4fae;
+  --intent-prospect: #b0447e;
+  --intent-task: #1f7a55;
 
   --grid-line: #e0dcd0;
   --grid-line-faint: #ebe8de;

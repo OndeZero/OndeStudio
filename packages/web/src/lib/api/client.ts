@@ -1,5 +1,6 @@
 import { ApiErrorSchema } from "@ondestudio/shared";
 import type { ZodType } from "zod";
+import { notifyUnauthenticated } from "./unauthenticated";
 
 const API_BASE = "/api/v1";
 
@@ -13,6 +14,9 @@ export async function apiGet<T>(path: string, schema: ZodType<T>): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { headers: { Accept: "application/json" } });
 
   if (!res.ok) {
+    // A 401 means the session is gone; the shell reacts (redirect to login),
+    // the throwing caller only sees an ordinary failure.
+    if (res.status === 401) notifyUnauthenticated();
     throw new Error(`GET ${path} failed with ${res.status}: ${await readErrorMessage(res)}`);
   }
 

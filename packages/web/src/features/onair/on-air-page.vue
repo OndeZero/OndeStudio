@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { useStationStore } from "../../stores/station";
 import OnAirPanel from "./on-air-panel.vue";
+import UpcomingList from "./upcoming-list.vue";
 
-// The page stays a thin wrapper: it binds the panel to the app-wide station
-// choice; the panel itself is reusable with any station (docs/2 §8.1).
+// The page stays a thin wrapper: it binds the panel and the M2 Upcoming
+// section (PD §5.5, read-only) to the app-wide station choice; both stay
+// reusable with any station (docs/2 §8.1).
 const stationStore = useStationStore();
 </script>
 
@@ -11,6 +13,7 @@ const stationStore = useStationStore();
   <!-- The narrow reading column the shell used to provide app-wide. -->
   <div class="onair-wrap">
     <OnAirPanel :station="stationStore.current" />
+    <UpcomingList :station="stationStore.current" />
   </div>
 </template>
 

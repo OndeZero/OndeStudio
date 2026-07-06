@@ -3,18 +3,18 @@ import type { Occurrence } from "@ondestudio/shared";
 import { computed, onUnmounted, ref, watch } from "vue";
 import { formatHm, isoDayOf } from "../../lib/station-time";
 import { useStationStore } from "../../stores/station";
+import AttentionRail from "./attention-rail.vue";
 import CreateSlotDialog from "./create-slot-dialog.vue";
 import { useGridStore } from "./grid-store";
 import GridToolbar from "./grid-toolbar.vue";
 import GridWeek from "./grid-week.vue";
 import QuickEditPopover from "./quick-edit-popover.vue";
-import { dismissToast, toasts } from "./toast";
 
 /**
  * The home surface (PD §5.1): thin orchestration only — loads the window
  * per station, routes card clicks to quick-edit and empty-space drags to
- * the create dialog, and shows the two passive layers (mirror notice,
- * toasts).
+ * the create dialog, docks the attention rail and shows the mirror notice.
+ * The toast stack lives in the shell since M2 (all surfaces share it).
  */
 const stationStore = useStationStore();
 const store = useGridStore();
@@ -80,7 +80,13 @@ function defaultTime(): string {
       </button>
     </div>
 
-    <GridWeek @open="openQuickEdit" @create="createDraft = $event" />
+    <!-- The rail docks beside the week without disturbing its internal scroll. -->
+    <div class="grid-body">
+      <div class="grid-main">
+        <GridWeek @open="openQuickEdit" @create="createDraft = $event" />
+      </div>
+      <AttentionRail />
+    </div>
 
     <QuickEditPopover
       v-if="quickEditOccurrence && quickEdit"
@@ -90,15 +96,6 @@ function defaultTime(): string {
     />
 
     <CreateSlotDialog v-if="createDraft" :draft="createDraft" @close="createDraft = null" />
-
-    <div class="toast-stack" aria-live="polite">
-      <div v-for="toast in toasts" :key="toast.id" class="toast" :class="`toast-${toast.kind}`">
-        <span class="toast-message">{{ toast.message }}</span>
-        <button type="button" class="notice-dismiss" title="Dismiss" @click="dismissToast(toast.id)">
-          ×
-        </button>
-      </div>
-    </div>
   </section>
 </template>
 
@@ -139,30 +136,18 @@ function defaultTime(): string {
   cursor: pointer;
 }
 
-.toast-stack {
-  position: fixed;
-  bottom: var(--space-4);
-  left: 50%;
-  z-index: 80;
-  display: grid;
+.grid-body {
+  display: flex;
+  flex: 1;
   gap: var(--space-2);
-  transform: translateX(-50%);
-  width: min(28rem, 92vw);
+  min-height: 0;
 }
 
-.toast {
+.grid-main {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
-  font-size: var(--text-sm);
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
 }
-.toast-error { border-left: 3px solid var(--color-danger); }
-.toast-info { border-left: 3px solid var(--color-accent); }
-.toast-message { overflow-wrap: anywhere; }
 </style>

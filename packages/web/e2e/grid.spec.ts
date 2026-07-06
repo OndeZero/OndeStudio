@@ -9,12 +9,21 @@ declare const process: { env: Record<string, string | undefined> };
  *   bun packages/api/scripts/seed-demo.ts --fresh
  *
  * The drag and the transition mutate that data — reseed between runs.
+ * Since M2 every surface sits behind the session cookie; the demo account
+ * below comes from the same seed, and page.request shares its cookie jar
+ * with the page context.
  */
 test.describe("week grid", () => {
   test.skip(
     !process.env.PW_BASE_URL,
     "PW_BASE_URL is not set — no server to point at (see playwright.config.ts)",
   );
+
+  test.beforeEach(async ({ page }) => {
+    await page.request.post("/api/v1/auth/login", {
+      data: { email: "demo@ondestudio.local", password: "ondestudio-demo" },
+    });
+  });
 
   test("renders the seeded week with a state-framed card", async ({ page }) => {
     await page.goto("/");
