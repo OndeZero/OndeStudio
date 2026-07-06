@@ -294,10 +294,16 @@ export const occurrenceRowId = encodeOccurrenceId;
 
 /** docs/3 D3 naming: lowercase, ASCII-folded, hyphen-slugged. */
 export function slugify(name: string): string {
-  return name
+  const slug = name
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+  if (slug) return slug;
+  // Non-Latin names (Greek, Arabic, CJK…) can fold to nothing; the UNIQUE slug
+  // must never collapse to "" (docs/3 D3 edge case, flagged in its §8.3).
+  let hash = 5381;
+  for (const ch of name) hash = ((hash * 33) ^ (ch.codePointAt(0) ?? 0)) >>> 0;
+  return `show-${hash.toString(36)}`;
 }

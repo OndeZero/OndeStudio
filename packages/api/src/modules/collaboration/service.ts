@@ -94,7 +94,7 @@ export class CollaborationService {
     await this.inbox.push(
       assigneeIds.filter((id) => id !== byUserId),
       this.assignedMessage(card.subject, userRef(directory.value, byUserId)),
-      card.id,
+      card,
       now,
     );
     this.cardChanged(station, card.id);
@@ -112,6 +112,17 @@ export class CollaborationService {
     const now = this.now();
     const updated = existing.value.update(input, now);
     if (!updated.ok) return updated;
+
+    // A slot anchor must exist ON THE CARD'S STATION — same check as promote().
+    // Slots are the only anchor the API can cheaply authorize today (numeric
+    // id + station via PromotionPort); show/occurrence/media anchors stay
+    // label-resolved-only, where a dangling one just renders without a label.
+    if (input.anchor?.type === "slot") {
+      const slotId = Number(input.anchor.id);
+      if (!(await this.deps.promotion.slotExists(slotId, existing.value.stationId))) {
+        return err(DomainError.notFound("slot"));
+      }
+    }
 
     // Validate the assignee replace-set BEFORE any write, so a bad id cannot
     // leave the card half-updated.
@@ -133,7 +144,7 @@ export class CollaborationService {
       await this.inbox.push(
         newAssignees,
         this.assignedMessage(updated.value.subject, userRef(directory, byUserId)),
-        cardId,
+        updated.value,
         now,
       );
     }
@@ -167,7 +178,7 @@ export class CollaborationService {
     await this.inbox.push(
       recipients,
       { kind: "comment", message: `${author.displayName} replied on «${card.value.subject}»` },
-      cardId,
+      card.value,
       now,
     );
     this.cardChanged(station, cardId);
@@ -231,7 +242,9 @@ export class CollaborationService {
       if (!show.ok) return show;
       anchor = { type: "show", id: String(show.value.id) };
     } else {
-      if (!(await this.deps.promotion.slotExists(input.slotId))) {
+      // Station-scoped: a slot that exists on ANOTHER station answers 404 —
+      // cross-station promotion must not silently anchor into a foreign grid.
+      if (!(await this.deps.promotion.slotExists(input.slotId, card.value.stationId))) {
         return err(DomainError.notFound("slot"));
       }
       anchor = { type: "slot", id: String(input.slotId) };

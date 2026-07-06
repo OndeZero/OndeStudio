@@ -50,10 +50,12 @@ const collaborationService = new CollaborationService({
   repo: new DrizzleCollaborationRepo(db),
   // labels for anchor chips — resolve via scheduling (shows/slots) & content (media)
   anchors: { resolveLabel: async ({ type, id }) => /* show name, slot title… */ null },
-  // promotion targets — scheduling's find-or-create show keeps names unforked
+  // promotion targets — scheduling's find-or-create show keeps names unforked;
+  // slotExists is station-scoped so cards can't anchor across the boundary
   promotion: {
     createShow: async (name) => ok(await schedulingRepo.findOrCreateShow(name)),
-    slotExists: async (slotId) => (await schedulingRepo.getSlot(slotId)) !== null,
+    slotExists: async (slotId, station) =>
+      (await schedulingRepo.getSlot(slotId))?.slot.stationId === station,
   },
   users: /* people directory: id → displayName */,
   bus, clock: systemClock, logger: logger.child({ component: "collaboration" }),
@@ -68,8 +70,12 @@ to the public paths: the inbox is per-session.
 
 ## Phase-1 scope notes
 
-- Anchors are accepted as given on create/update; a dangling anchor just
-  renders without a label. Tightening to existence checks can ride the same
+- Anchors are mostly accepted as given; a dangling anchor just renders without
+  a label. The one exception: a **slot** anchor (on update or promote) must
+  exist on the card's station, checked through `PromotionPort.slotExists` —
+  slots are the only anchor type the API can cheaply authorize today (numeric
+  id + station). Show/occurrence/media anchors stay label-resolved-only, and
+  create still accepts anchors unchecked; tightening those can ride the same
   `AnchorResolverPort`.
 - Notification triggers are the M2 minimum: `assigned` and `comment`. The
   state-driven triggers (validated-but-empty slot as air date nears…) arrive
@@ -77,6 +83,24 @@ to the public paths: the inbox is per-session.
   `UserDirectoryPort.allUserIds` are already in place for them.
 - Promotion targets are `show` and existing `slot`; contribution promotion
   joins when the content module's intake lands.
+
+## Known limits
+
+- **Multi-write use-cases are not transactional.** Promotion first creates (or
+  reuses) the show through `PromotionPort`, then saves the card — a crash in
+  between leaves a show without its promoted card (find-or-create makes the
+  retry converge on the same show, but the window exists). Likewise
+  create/update write `setAssignees` and `saveCard` as separate statements, so
+  a failure can leave assignees ahead of the card fields. Accepted for now:
+  single-writer SQLite makes the window tiny and a retry heals it. Revisit
+  with a repo-level transaction seam (a unit-of-work the service can wrap
+  multi-write use-cases in) rather than leaking drizzle transactions into the
+  service.
+- **Station ids are shape-validated only.** There is no station registry yet,
+  so any well-formed slug (`StationSlugSchema`) creates a board: a typo like
+  `/stations/zo/cards` silently starts an empty, invisible board instead of
+  404ing. Tightens to real existence checks when the `stations` resource lands
+  (docs/2 §6.2).
 
 ## Extension points
 

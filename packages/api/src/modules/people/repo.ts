@@ -30,6 +30,8 @@ export interface PeopleRepo {
   getSession(id: string): Promise<SessionRecord | null>;
   touchSession(id: string, lastSeenAt: Date, expiresAt: Date): Promise<void>;
   deleteSession(id: string): Promise<void>;
+  /** Revocation on password (re)set: a stolen session must not survive a reset. */
+  deleteSessionsForUser(userId: number): Promise<void>;
   deleteExpiredSessions(now: Date): Promise<void>;
 }
 
@@ -169,6 +171,10 @@ export class DrizzlePeopleRepo implements PeopleRepo {
 
   async deleteSession(id: string): Promise<void> {
     await this.db.delete(userSessions).where(eq(userSessions.id, id));
+  }
+
+  async deleteSessionsForUser(userId: number): Promise<void> {
+    await this.db.delete(userSessions).where(eq(userSessions.userId, userId));
   }
 
   async deleteExpiredSessions(now: Date): Promise<void> {

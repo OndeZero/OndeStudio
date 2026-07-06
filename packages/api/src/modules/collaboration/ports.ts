@@ -18,11 +18,12 @@ export interface AnchorResolverPort {
 /**
  * Promotion targets (PD §4.14). createShow may reuse an existing show by name
  * (scheduling's find-or-create) — promoting twice to the same name must not
- * fork identities.
+ * fork identities. slotExists is station-scoped: a slot on another station
+ * must answer "no", so cards cannot anchor across the station boundary.
  */
 export interface PromotionPort {
   createShow(name: string): Promise<Result<{ id: number; name: string }, DomainError>>;
-  slotExists(slotId: number): Promise<boolean>;
+  slotExists(slotId: number, station: string): Promise<boolean>;
 }
 
 export interface DirectoryUser {

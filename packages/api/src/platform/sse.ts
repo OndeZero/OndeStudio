@@ -1,5 +1,6 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { SSE_CHANNELS, type SseChannel } from "@ondestudio/shared";
+import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { Logger } from "../kernel/logger";
 import { StationId } from "../kernel/station-id";
@@ -61,15 +62,24 @@ const HEARTBEAT_MS = 15_000;
 export type SseSnapshotProvider = (station: string) => Promise<unknown | null>;
 export type SseSnapshotProviders = Partial<Record<SseChannel, SseSnapshotProvider>>;
 
+export interface SseRouteOptions {
+  snapshots?: SseSnapshotProviders;
+  /** Channels subscribable without a session — the public seam (docs/2 §6.4). */
+  publicChannels?: SseChannel[];
+  /** Session check for the rest; wired by the composition root (platform stays module-free). */
+  isAuthorized?: (c: Context) => Promise<boolean>;
+}
+
 /** `GET /stations/{station}/sse?channels=onair,grid` — one connection, N channels. */
 export function createSseRoutes(
   hub: SseHub,
   logger: Logger,
-  snapshots: SseSnapshotProviders = {},
+  options: SseRouteOptions = {},
 ): OpenAPIHono {
+  const snapshots = options.snapshots ?? {};
   const routes = createRouter();
 
-  routes.get("/stations/:station/sse", (c) => {
+  routes.get("/stations/:station/sse", async (c) => {
     // Validate + canonicalize: publishers key the hub on the parsed StationId
     // value, so an unvalidated raw param would subscribe to a key nothing
     // ever publishes to — a silently dead stream (docs/2 §6.1).
@@ -88,6 +98,15 @@ export function createSseRoutes(
       return c.json({ error: `channels must be a comma list of: ${SSE_CHANNELS.join(", ")}` }, 422);
     }
     const channels = requested as SseChannel[];
+
+    // Team channels (grid/board) carry internal activity hints; only the
+    // configured public channels are open without a session.
+    if (options.publicChannels && options.isAuthorized) {
+      const needsAuth = channels.some((channel) => !options.publicChannels?.includes(channel));
+      if (needsAuth && !(await options.isAuthorized(c))) {
+        return c.json({ error: "authentication required", kind: "unauthenticated" }, 401);
+      }
+    }
 
     return streamSSE(c, async (stream) => {
       const send: Send = (event, data) => {

@@ -36,6 +36,24 @@ describe("SseHub", () => {
 });
 
 describe("SSE route", () => {
+  test("team channels require a session when a gate is configured; onair stays public", async () => {
+    const hub = createSseHub(silentLogger);
+    const routes = createSseRoutes(hub, silentLogger, {
+      publicChannels: ["onair"],
+      isAuthorized: (c) => Promise.resolve(c.req.header("x-test-auth") === "yes"),
+    });
+    expect((await routes.request("/stations/oz/sse?channels=board")).status).toBe(401);
+    expect((await routes.request("/stations/oz/sse?channels=onair,grid")).status).toBe(401);
+    const publicOnly = await routes.request("/stations/oz/sse?channels=onair");
+    expect(publicOnly.status).toBe(200);
+    await publicOnly.body?.cancel();
+    const authed = await routes.request("/stations/oz/sse?channels=board", {
+      headers: { "x-test-auth": "yes" },
+    });
+    expect(authed.status).toBe(200);
+    await authed.body?.cancel();
+  });
+
   test("rejects missing or unknown channels", async () => {
     const routes = createSseRoutes(createSseHub(silentLogger), silentLogger);
     const missing = await routes.request("/stations/oz/sse");
@@ -64,7 +82,7 @@ describe("SSE route", () => {
   test("a fresh subscriber gets the channel snapshot before heartbeats", async () => {
     const hub = createSseHub(silentLogger);
     const routes = createSseRoutes(hub, silentLogger, {
-      onair: () => Promise.resolve({ hello: "oz" }),
+      snapshots: { onair: () => Promise.resolve({ hello: "oz" }) },
     });
     const response = await routes.request("/stations/oz/sse?channels=onair");
     const reader = response.body?.getReader();

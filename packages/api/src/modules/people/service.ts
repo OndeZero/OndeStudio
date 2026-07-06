@@ -83,7 +83,10 @@ export class PeopleService {
       return null;
     }
     if (now.getTime() - session.lastSeenAt.getTime() > SESSION_TOUCH_AFTER_MS) {
-      await this.deps.repo.touchSession(sessionId, now, new Date(now.getTime() + SESSION_TTL_MS));
+      // lastSeen bookkeeping only: the cookie's Max-Age is fixed at login and
+      // never re-emitted, so extending expiresAt here would outlive the cookie
+      // — both sides agree on one fixed 30-day lifetime instead.
+      await this.deps.repo.touchSession(sessionId, now, session.expiresAt);
     }
     return this.deps.repo.getUser(session.userId);
   }
@@ -109,6 +112,9 @@ export class PeopleService {
     }
     const hash = await Bun.password.hash(password);
     await this.deps.repo.completeSetup(found.user.id, hash);
+    // The setup link doubles as the password reset (docs/2 §12): every prior
+    // session dies with the old password — a stolen cookie must not outlive it.
+    await this.deps.repo.deleteSessionsForUser(found.user.id);
     this.deps.logger.info("setup completed", { userId: found.user.id });
     return ok(found.user);
   }
@@ -117,12 +123,23 @@ export class PeopleService {
   async importAccounts(): Promise<Result<number, DomainError>> {
     const accounts = await this.deps.directory.fetchAccounts();
     if (!accounts.ok) return accounts;
+    let imported = 0;
     for (const seed of accounts.value) {
       if (!seed.email) continue;
-      await this.deps.repo.upsertSeededUser(seed);
+      try {
+        await this.deps.repo.upsertSeededUser(seed);
+        imported += 1;
+      } catch (error) {
+        // One bad row (e.g. an upstream account recreated with a new id but the
+        // same UNIQUE email) must not abort the rest of the seed.
+        this.deps.logger.warn("account import skipped", {
+          email: seed.email,
+          reason: String(error),
+        });
+      }
     }
-    this.deps.logger.info("accounts imported", { count: accounts.value.length });
-    return ok(accounts.value.length);
+    this.deps.logger.info("accounts imported", { count: imported });
+    return ok(imported);
   }
 
   async listUsers(): Promise<UserAccount[]> {

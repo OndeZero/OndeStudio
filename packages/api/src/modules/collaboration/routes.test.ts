@@ -58,7 +58,8 @@ function buildApp() {
     },
     promotion: {
       createShow: (name) => Promise.resolve(ok({ id: 7, name })),
-      slotExists: (slotId) => Promise.resolve(slotId === 42),
+      // Station-scoped (ports.ts): slot 42 exists — on oz only.
+      slotExists: (slotId, station) => Promise.resolve(slotId === 42 && station === "oz"),
     },
     users,
     bus,
@@ -139,6 +140,7 @@ describe("collaboration over HTTP", () => {
       "«Bring back the night mix» — assigned to you by Alice",
     );
     expect(bobInbox.notifications[0]?.cardId).toBe(cardId);
+    expect(bobInbox.notifications[0]?.station).toBe("oz"); // deep-links carry the station
     expect((await inbox(alice)).unreadCount).toBe(0);
   });
 
@@ -245,6 +247,31 @@ describe("collaboration over HTTP", () => {
     });
     expect(toSlot.status).toBe(200);
     expect(CardSchema.parse(await toSlot.json()).anchor).toEqual({ type: "slot", id: "42" });
+  });
+
+  test("a slot on another station is out of reach: promote and anchor both 404", async () => {
+    // Slot 42 exists — on oz (fake port above). This card lives on wz-test.
+    const created = await request(alice, "/stations/wz-test/cards", "POST", {
+      intent: "prospect",
+      subject: "Poach the oz slot",
+    });
+    expect(created.status).toBe(201);
+    const card = CardSchema.parse(await created.json());
+
+    const promoted = await request(alice, `/stations/wz-test/cards/${card.id}/promote`, "POST", {
+      to: "slot",
+      slotId: 42,
+    });
+    expect(promoted.status).toBe(404);
+
+    const anchored = await request(alice, `/stations/wz-test/cards/${card.id}`, "PUT", {
+      anchor: { type: "slot", id: "42" },
+    });
+    expect(anchored.status).toBe(404);
+
+    // The refusals wrote nothing: the card is still unanchored.
+    const after = await request(alice, `/stations/wz-test/cards/${card.id}`);
+    expect(CardSchema.parse(await after.json()).anchor).toBeNull();
   });
 
   test("update replaces the assignee set, notifies only new assignees, bumps activity", async () => {

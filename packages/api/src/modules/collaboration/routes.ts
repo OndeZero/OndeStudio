@@ -72,7 +72,11 @@ const updateCardRoute = createRoute({
   tags: ["collaboration"],
   summary: "Edit fields; assigneeIds is a replace-set (new assignees are notified)",
   request: { params: cardParam, body: body(UpdateCardInputSchema) },
-  responses: { 200: res("Updated", CardSchema), ...missing, ...invalid },
+  responses: {
+    200: res("Updated", CardSchema),
+    404: { description: "Unknown card, or slot anchor not on this station", content: errorContent },
+    ...invalid,
+  },
 });
 
 const addCommentRoute = createRoute({

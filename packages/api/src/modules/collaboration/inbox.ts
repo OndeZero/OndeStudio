@@ -21,11 +21,15 @@ export class Inbox {
     private readonly clock: Clock,
   ) {}
 
-  /** Fan a card trigger out to userIds — callers exclude the actor themselves. */
+  /**
+   * Fan a card trigger out to userIds — callers exclude the actor themselves.
+   * Takes the card (not just its id) so every notification records the
+   * station: the inbox is user-scoped, so deep-links must say where to point.
+   */
   async push(
     userIds: number[],
     content: { kind: string; message: string },
-    cardId: number,
+    card: { id: number; stationId: string },
     now: string,
   ): Promise<void> {
     for (const userId of userIds) {
@@ -35,7 +39,8 @@ export class Inbox {
         message: content.message,
         anchorType: null, // reserved for non-card triggers (schema.ts)
         anchorId: null,
-        cardId,
+        stationId: card.stationId,
+        cardId: card.id,
         createdAt: now,
       });
       this.notified(userId);

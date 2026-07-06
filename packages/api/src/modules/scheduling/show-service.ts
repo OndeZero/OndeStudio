@@ -186,7 +186,9 @@ export class ShowService {
  * the station media root, no traversal, no leading/trailing/doubled slashes.
  */
 function normalizeFolderPath(raw: string): Result<string, DomainError> {
+  // NFC to match the media browser's canonical form (content/service.ts).
   const cleaned = raw
+    .normalize("NFC")
     .trim()
     .replace(/\/{2,}/g, "/")
     .replace(/^\/+/, "")

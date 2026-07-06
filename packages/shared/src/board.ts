@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { UserRefSchema } from "./auth";
+import { StationSlugSchema } from "./station";
 
 /**
  * Discussion-board contract (PD §4.14, §5.2): a card is a thread with an
@@ -47,7 +48,7 @@ export const CardSchema = z.object({
   createdBy: UserRefSchema,
   createdAt: z.iso.datetime(),
   assignees: z.array(UserRefSchema),
-  /** Tally per vote kind (zero counts omitted) and the caller's own vote. */
+  /** Tally per vote kind and the caller's own vote. The enum-keyed record is exhaustive (Zod 4): all four kinds are always present, zeros included. */
   votes: z.record(VoteKindSchema, z.number().int()),
   myVote: VoteKindSchema.nullable(),
   commentCount: z.number().int(),
@@ -114,6 +115,8 @@ export const NotificationSchema = z.object({
   kind: z.string(),
   message: z.string(),
   anchor: AnchorSchema.nullable(),
+  /** The card's station — the inbox is user-scoped, so deep-links need it. Null: legacy rows, future station-less triggers. */
+  station: StationSlugSchema.nullable(),
   cardId: z.number().int().nullable(),
   createdAt: z.iso.datetime(),
   readAt: z.iso.datetime().nullable(),

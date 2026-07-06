@@ -56,6 +56,7 @@ export function notificationToContract(record: NotificationRecord): Notification
       record.anchorType && record.anchorId
         ? { type: record.anchorType as Anchor["type"], id: record.anchorId }
         : null,
+    station: record.stationId,
     cardId: record.cardId,
     createdAt: record.createdAt,
     readAt: record.readAt,

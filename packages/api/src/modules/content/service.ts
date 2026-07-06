@@ -43,7 +43,12 @@ export class ContentService {
     const files = await this.deps.media.listFiles(station);
     if (!files.ok) return files; // upstream failure propagates unchanged (503 at the edge)
 
-    const children = deriveChildren(files.value, path.value);
+    // Canonicalize index paths too: the live tree mixes NFC/NFD (SFTP intake).
+    const canonicalFiles = files.value.map((file) => ({
+      ...file,
+      path: file.path.normalize("NFC"),
+    }));
+    const children = deriveChildren(canonicalFiles, path.value);
     if (children === null) return err(DomainError.notFound(`media path "${path.value}"`));
 
     const owned = [...(await this.deps.ownership.ownedFolders(station))].sort(
@@ -104,7 +109,12 @@ function deriveChildren(files: MediaFileRecord[], dir: string): ChildEntry[] | n
 
 /** The deepest configured drop folder containing the path (`owned` is pre-sorted deepest-first). */
 function ownerOf(path: string, owned: OwnedFolder[]): OwnedFolder | null {
-  return owned.find((folder) => path === folder.path || path.startsWith(`${folder.path}/`)) ?? null;
+  return (
+    owned.find((folder) => {
+      const prefix = folder.path.normalize("NFC"); // legacy rows may predate NFC writes
+      return path === prefix || path.startsWith(`${prefix}/`);
+    }) ?? null
+  );
 }
 
 /**
@@ -112,7 +122,10 @@ function ownerOf(path: string, owned: OwnedFolder[]): OwnedFolder | null {
  * doubled slashes are forgiven, traversal is not; "" is the root.
  */
 function normalizeBrowsePath(raw: string): Result<string, DomainError> {
+  // NFC first: macOS SFTP clients write NFD, the AzuraCast index may hold
+  // either — ownership prefixes must compare on one canonical form.
   const cleaned = raw
+    .normalize("NFC")
     .trim()
     .replace(/\/{2,}/g, "/")
     .replace(/^\/+/, "")

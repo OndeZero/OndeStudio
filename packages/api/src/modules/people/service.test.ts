@@ -114,6 +114,11 @@ class MemoryPeopleRepo implements PeopleRepo {
   async deleteSession(id: string) {
     this.sessions.delete(id);
   }
+  async deleteSessionsForUser(userId: number) {
+    for (const [id, session] of this.sessions) {
+      if (session.userId === userId) this.sessions.delete(id);
+    }
+  }
   async deleteExpiredSessions(now: Date) {
     for (const [id, s] of this.sessions) if (s.expiresAt <= now) this.sessions.delete(id);
   }
@@ -199,6 +204,26 @@ describe("PeopleService auth", () => {
     expect((await service.login("a@b.c", "long-enough-password")).ok).toBe(true);
     // One-time: the token is gone.
     expect((await service.completeSetup(token.value, "another-password")).ok).toBe(false);
+  });
+
+  test("completing a setup link revokes every existing session (password reset semantics)", async () => {
+    await repo.createLocalUser({
+      email: "c@b.c",
+      displayName: "C",
+      role: "team",
+      passwordHash: await Bun.password.hash("old-password-1"),
+    });
+    const stolen = await service.login("c@b.c", "old-password-1");
+    expect(stolen.ok).toBe(true);
+    if (!stolen.ok) return;
+
+    const token = await service.issueSetupToken("c@b.c");
+    if (!token.ok) return;
+    await service.completeSetup(token.value, "brand-new-password");
+
+    // The pre-reset session is dead; the new password works.
+    expect(await service.verifySession(stolen.value.sessionId)).toBeNull();
+    expect((await service.login("c@b.c", "brand-new-password")).ok).toBe(true);
   });
 
   test("expired setup tokens are refused", async () => {

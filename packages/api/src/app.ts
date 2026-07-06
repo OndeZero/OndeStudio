@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getSignedCookie } from "hono/cookie";
 import { systemClock } from "./kernel/clock";
 import { EventBus } from "./kernel/event-bus";
 import { ok } from "./kernel/result";
@@ -31,7 +32,7 @@ import {
   ShowService,
 } from "./modules/scheduling";
 import { DrizzleSchedulingRepo } from "./modules/scheduling/wiring";
-import { createAuthMiddleware } from "./platform/auth";
+import { createAuthMiddleware, SESSION_COOKIE } from "./platform/auth";
 import { type AppConfig, loadConfig } from "./platform/config";
 import { createDb, resolveDataPath } from "./platform/db";
 import { createApiApp } from "./platform/http";
@@ -126,7 +127,10 @@ export function buildServer(config: AppConfig = loadConfig()) {
   };
   const promotion: PromotionPort = {
     createShow: async (name) => ok(await schedulingRepo.findOrCreateShow(name)),
-    slotExists: async (slotId) => (await schedulingRepo.getSlot(slotId)) !== null,
+    // Station-scoped (ports.ts): a slot on another station answers "no", so
+    // cards cannot promote/anchor across the station boundary.
+    slotExists: async (slotId, station) =>
+      (await schedulingRepo.getSlot(slotId))?.slot.stationId === station,
   };
   const userDirectory: UserDirectoryPort = {
     getUsers: async (ids) => {
@@ -196,13 +200,21 @@ export function buildServer(config: AppConfig = loadConfig()) {
   api.route(
     "/",
     createSseRoutes(sseHub, logger, {
-      // Fresh (re)connections get the current on-air state immediately; grid
-      // subscribers refetch their window on connect, so no snapshot needed.
-      onair: async (station) => {
-        const parsed = StationId.parse(station);
-        if (!parsed.ok) return null;
-        const result = await playoutService.getNow(parsed.value);
-        return result.ok ? onAirToContract(result.value) : null;
+      snapshots: {
+        // Fresh (re)connections get the current on-air state immediately; grid
+        // subscribers refetch their window on connect, so no snapshot needed.
+        onair: async (station) => {
+          const parsed = StationId.parse(station);
+          if (!parsed.ok) return null;
+          const result = await playoutService.getNow(parsed.value);
+          return result.ok ? onAirToContract(result.value) : null;
+        },
+      },
+      // onair is the galaxy seam; grid/board activity hints are team-only.
+      publicChannels: ["onair"],
+      isAuthorized: async (c) => {
+        const sessionId = await getSignedCookie(c, cookieSecret, SESSION_COOKIE);
+        return Boolean(sessionId && (await peopleService.verifySession(sessionId)));
       },
     }),
   );
@@ -215,9 +227,12 @@ export function buildServer(config: AppConfig = loadConfig()) {
   // Ingest: poll each station's now-playing (AzuraCast SSE upgrade: ADR-0011).
   const startIngest = (): (() => void) => {
     // Best-effort account seed at boot (docs/2 §7.6) — upstream may be down.
-    void peopleService.importAccounts().then((result) => {
-      if (!result.ok) logger.warn("account import failed", { reason: result.error.message });
-    });
+    void peopleService
+      .importAccounts()
+      .then((result) => {
+        if (!result.ok) logger.warn("account import failed", { reason: result.error.message });
+      })
+      .catch((error) => logger.error("account import crashed", { error: String(error) }));
     const timers = config.stations.map((station) => {
       void playoutService.refreshNow(station);
       return setInterval(

@@ -30,6 +30,7 @@ export interface NotificationRecord {
   message: string;
   anchorType: string | null;
   anchorId: string | null;
+  stationId: string | null;
   cardId: number | null;
   createdAt: string;
   readAt: string | null;

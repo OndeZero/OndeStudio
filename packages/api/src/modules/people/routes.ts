@@ -86,6 +86,8 @@ export function createPeopleRoutes(service: PeopleService, cookieSecret: string)
       maxAge: 30 * 24 * 3600,
       // `secure` stays off: phase 1 serves localhost/LAN over http; the
       // reverse-proxy TLS deployment flips this via a header-aware revisit (M5).
+      // Same M5 checklist: a per-IP/email login throttle before leaving the LAN
+      // — /auth/login is public and each attempt costs a full argon2 verify.
     });
   };
 

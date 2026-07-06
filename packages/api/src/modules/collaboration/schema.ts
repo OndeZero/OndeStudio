@@ -95,6 +95,8 @@ export const notifications = sqliteTable("notification", {
   /** Reserved for non-card triggers (slot moved, content arrived…); M2 writes null. */
   anchorType: text("anchor_type"),
   anchorId: text("anchor_id"),
+  /** The card's station — cross-station deep-links need it. Null: pre-station rows, future station-less triggers. */
+  stationId: text("station_id"),
   cardId: integer("card_id"),
   createdAt: text("created_at").notNull(),
   readAt: text("read_at"),
