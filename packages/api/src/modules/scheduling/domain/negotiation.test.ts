@@ -23,14 +23,17 @@ describe("Negotiation state machine", () => {
     }
   });
 
-  test("the PD §4.4 shape: prebooked may skip dealing; validated can only be cancelled", () => {
+  test("the amended PD §4.4 shape: human states are freely reversible (ADR-0012)", () => {
     expect(Negotiation.of("prebooked").transitionTo("validated").ok).toBe(true);
-    expect(Negotiation.of("validated").transitionTo("declined").ok).toBe(false);
-    expect(Negotiation.of("validated").transitionTo("cancelled").ok).toBe(true);
-    // aired is time-driven — never a human transition target
+    // The revival paths the team asked for:
+    expect(Negotiation.of("cancelled").transitionTo("validated").ok).toBe(true);
+    expect(Negotiation.of("declined").transitionTo("dealing").ok).toBe(true);
+    expect(Negotiation.of("validated").transitionTo("dealing").ok).toBe(true);
+    // aired is time-driven — never a human transition target, and terminal
     for (const from of NEGOTIATION_STATES) {
       expect(Negotiation.of(from).transitionTo("aired").ok).toBe(false);
     }
+    expect(Negotiation.of("aired").transitionTo("validated").ok).toBe(false);
   });
 
   test("effectiveAt computes aired from time for validated slots only", () => {

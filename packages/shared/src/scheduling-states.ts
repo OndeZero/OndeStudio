@@ -21,17 +21,19 @@ export const NegotiationStateSchema = z.enum(NEGOTIATION_STATES);
 export type NegotiationState = z.infer<typeof NegotiationStateSchema>;
 
 /**
- * Legal human-driven transitions (PD §4.4). `aired` is time-driven, never a
- * human action — it appears as a target nowhere here; the API computes it.
- * A `prebooked` hold may jump straight to `validated`; it may also die
- * `declined` without ever being negotiated ("never got to yes").
+ * Legal human-driven transitions (PD §4.4, amended 2026-07-07): the five
+ * human states are FREELY REVERSIBLE — a cancelled slot may end up validated
+ * again, a declined ghost can be revived, a validated slot can reopen as
+ * dealing. Progression never locks the team out of an earlier state (ADR-0012).
+ * Only `aired` is one-way: it is time-driven reality, never a human action —
+ * it appears as a target nowhere here; the API computes it at read time.
  */
 export const NEGOTIATION_TRANSITIONS: Record<NegotiationState, readonly NegotiationState[]> = {
-  prebooked: ["dealing", "validated", "declined"],
-  dealing: ["validated", "declined"],
-  validated: ["cancelled"],
-  declined: [],
-  cancelled: [],
+  prebooked: ["dealing", "validated", "declined", "cancelled"],
+  dealing: ["prebooked", "validated", "declined", "cancelled"],
+  validated: ["prebooked", "dealing", "declined", "cancelled"],
+  declined: ["prebooked", "dealing", "validated", "cancelled"],
+  cancelled: ["prebooked", "dealing", "validated", "declined"],
   aired: [],
 };
 

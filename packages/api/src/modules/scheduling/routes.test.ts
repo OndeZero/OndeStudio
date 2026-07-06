@@ -129,7 +129,7 @@ describe("scheduling over HTTP", () => {
 
     const illegal = await app.request(
       `/stations/oz/occurrences/${occurrenceId}`,
-      jsonInit("PATCH", { negotiationState: "cancelled" }), // dealing → cancelled is not legal
+      jsonInit("PATCH", { negotiationState: "aired" }), // aired is time-driven, never settable
     );
     expect(illegal.status).toBe(409);
     const body = (await illegal.json()) as { kind: string };

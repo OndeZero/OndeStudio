@@ -49,7 +49,9 @@ describe("Occurrence", () => {
   test("negotiation transitions go through the state machine", () => {
     const validated = unwrap(candidate().transitionNegotiationTo("validated"));
     expect(validated.negotiation.value).toBe("validated");
-    const illegal = validated.transitionNegotiationTo("dealing");
+    // Reversible since ADR-0012 — but aired stays time-driven, never settable.
+    expect(validated.transitionNegotiationTo("dealing").ok).toBe(true);
+    const illegal = validated.transitionNegotiationTo("aired");
     expect(illegal.ok).toBe(false);
     if (!illegal.ok) expect(illegal.error.kind).toBe("illegal-transition");
   });

@@ -385,6 +385,11 @@ pre-booked → dealing → validated → (aired)
   announced — hence distinct from declined).
 - `aired` — automatic, time-driven, not a human action.
 
+**Reversibility (decided 2026-07-07):** the human states are freely reversible —
+a `cancelled` slot may end up `validated` again, a `declined` ghost can be
+revived, a `validated` slot can reopen as `dealing`. The diagram shows the
+*typical* forward path, not a constraint; only `aired` is one-way (time-driven).
+
 Slots with nothing to negotiate (e.g. a team member's own show) can be born directly
 `validated`; likewise a `pre-booked` hold may jump straight to `validated` without
 passing through `dealing`.
