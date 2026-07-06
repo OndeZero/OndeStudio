@@ -32,7 +32,11 @@ not a row exists yet.
 
 - `echo` slots are a kind with no origin-binding yet — metadata sync with the origin
   episode arrives with the episode queue (M2).
-- Shows are minimal identities (name + slug) until the show page lands (M2).
+- Shows carry the hub settings (PD §4.5: fallback policy, trust, replay flag,
+  contributor tz, drop folder) served by `ShowService` on `/shows` — a sibling of
+  `SchedulingService` that reuses its occurrence merge. The episode queue is next;
+  the summary's `nextOccurrenceAt` reads the raw series (exceptions ignored — the
+  detail view has the exact merge).
 - Write-back to AzuraCast is M3; nothing here touches the playout system.
 
 ## Extension points

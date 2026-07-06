@@ -1,4 +1,9 @@
-import { NEGOTIATION_STATES, SLOT_KINDS } from "@ondestudio/shared";
+import {
+  FALLBACK_POLICIES,
+  NEGOTIATION_STATES,
+  REPLAY_FLAGS,
+  SLOT_KINDS,
+} from "@ondestudio/shared";
 import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 
 /**
@@ -12,6 +17,15 @@ export const shows = sqliteTable("show", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
+  /** What airs when the episode queue runs dry (PD §4.5). */
+  fallbackPolicy: text("fallback_policy", { enum: FALLBACK_POLICIES }).notNull().default("discard"),
+  /** Auto-fed episodes air directly, or wait flagged for a quick review (PD §4.5). */
+  trustAutoAir: integer("trust_auto_air", { mode: "boolean" }).notNull().default(false),
+  replayFlag: text("replay_flag", { enum: REPLAY_FLAGS }).notNull().default("not_specified"),
+  /** IANA zone of the contributor, for translated-time helpers (PD §8.1). */
+  contributorTz: text("contributor_tz"),
+  /** Media path feeding this show's episode queue (PD §4.5); badges the media lens (PD §5.4). */
+  dropFolderPath: text("drop_folder_path"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

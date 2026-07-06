@@ -83,16 +83,16 @@ module.exports = {
       comment:
         "Application services orchestrate domain + ports; IO touches reality only in routes/repo/adapters (docs/2 §3.6).",
       severity: "error",
-      from: { path: "^packages/api/src/modules/[^/]+/service\\.ts$" },
+      from: { path: "^packages/api/src/modules/[^/]+/[^/]*service\\.ts$" },
       to: { path: "^packages/api/src/platform" },
     },
     {
       name: "io-edge-only",
       comment:
-        "Within a module, only the IO edge — routes.ts, repo.ts, adapters/ — may reach platform (docs/2 §3.6); events/schema/contract/ports/index stay platform-free (service.ts has its own stricter rule).",
+        "Within a module, only the IO edge — *routes.ts, *repo.ts, adapters/ — may reach platform (docs/2 §3.6); events/schema/contract/ports/index stay platform-free (services have their own stricter rule).",
       severity: "error",
       from: {
-        path: "^packages/api/src/modules/[^/]+/(?!routes\\.ts$|repo\\.ts$|service\\.ts$|adapters/)",
+        path: "^packages/api/src/modules/[^/]+/(?![^/]*routes\\.ts$|[^/]*repo\\.ts$|[^/]*service\\.ts$|adapters/)",
       },
       to: { path: "^packages/api/src/platform" },
     },

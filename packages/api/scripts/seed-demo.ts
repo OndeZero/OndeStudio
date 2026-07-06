@@ -12,6 +12,7 @@ import type { Recurrence } from "@ondestudio/shared";
 import { DateTime } from "luxon";
 import { unwrap } from "../src/kernel/result";
 import { StationId } from "../src/kernel/station-id";
+import { DrizzlePeopleRepo } from "../src/modules/people/wiring";
 import { Occurrence, RecurrenceRule, SlotDefinition } from "../src/modules/scheduling";
 import { occurrences, shows, slots } from "../src/modules/scheduling/schema";
 import { DrizzleSchedulingRepo } from "../src/modules/scheduling/wiring";
@@ -198,9 +199,20 @@ for (const seed of SEEDS) {
   }
 }
 
+// Local demo login so the seeded studio is usable without the setup-link flow.
+// DEV ONLY — real teammates come from import-users.ts + issue-setup-link.ts.
+const people = new DrizzlePeopleRepo(db);
+await people.createLocalUser({
+  email: "demo@ondestudio.local",
+  displayName: "Demo",
+  role: "team",
+  passwordHash: await Bun.password.hash("ondestudio-demo"),
+});
+
 logger.info("demo week seeded", {
   station: oz.value,
   weekOf: monday.toISODate(),
   slots: SEEDS.length,
   tweakedOccurrences: occurrenceCount,
+  login: "demo@ondestudio.local / ondestudio-demo",
 });

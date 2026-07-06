@@ -1,5 +1,11 @@
-import type { ContentState, IssueFlag, NegotiationState } from "@ondestudio/shared";
-import { and, eq, gte, lt, or } from "drizzle-orm";
+import type {
+  ContentState,
+  FallbackPolicy,
+  IssueFlag,
+  NegotiationState,
+  ReplayFlag,
+} from "@ondestudio/shared";
+import { and, eq, gte, isNotNull, lt, or } from "drizzle-orm";
 import { unwrap } from "../../kernel/result";
 import type { Db } from "../../platform/db";
 import { ContentPipeline } from "./domain/content-pipeline";
@@ -15,6 +21,21 @@ export interface SlotRecord {
   showName: string | null;
 }
 
+/** The show-hub row (docs/2 §5.2): identity + per-show settings (PD §4.5, §5.4). */
+export interface ShowRecord {
+  id: number;
+  name: string;
+  slug: string;
+  fallbackPolicy: FallbackPolicy;
+  trustAutoAir: boolean;
+  replayFlag: ReplayFlag;
+  contributorTz: string | null;
+  dropFolderPath: string | null;
+}
+
+/** Settings + name; a name change refreshes the slug (docs/3 D3). */
+export type UpdateShowFields = Partial<Omit<ShowRecord, "id" | "slug">>;
+
 export interface SchedulingRepo {
   listSlots(stationId: string): Promise<SlotRecord[]>;
   getSlot(id: number): Promise<SlotRecord | null>;
@@ -25,6 +46,14 @@ export interface SchedulingRepo {
   ): Promise<void>;
   deleteSlot(id: number): Promise<void>;
   findOrCreateShow(name: string): Promise<{ id: number; name: string }>;
+  getShow(id: number): Promise<ShowRecord | null>;
+  findShowBySlug(slug: string): Promise<ShowRecord | null>;
+  listShows(): Promise<ShowRecord[]>;
+  /** Partial settings update; a name change refreshes the slug (docs/3 D3). */
+  updateShow(id: number, fields: UpdateShowFields): Promise<void>;
+  slotsForShow(showId: number): Promise<SlotRecord[]>;
+  /** Shows with a drop folder configured — content's ownership badge source (PD §5.4). */
+  dropFolders(): Promise<{ showId: number; name: string; path: string }[]>;
   /** Exception rows whose current OR original time intersects the window (docs/2 §5.3). */
   findOccurrenceRows(stationId: string, fromUtc: Date, toUtc: Date): Promise<Occurrence[]>;
   getOccurrenceRow(key: OccurrenceKey): Promise<Occurrence | null>;
@@ -115,6 +144,55 @@ export class DrizzleSchedulingRepo implements SchedulingRepo {
     return { id: row.id, name: row.name };
   }
 
+  async getShow(id: number): Promise<ShowRecord | null> {
+    const rows = await this.db.select().from(shows).where(eq(shows.id, id)).limit(1);
+    const row = rows[0];
+    return row ? toShowRecord(row) : null;
+  }
+
+  async findShowBySlug(slug: string): Promise<ShowRecord | null> {
+    const rows = await this.db.select().from(shows).where(eq(shows.slug, slug)).limit(1);
+    const row = rows[0];
+    return row ? toShowRecord(row) : null;
+  }
+
+  async listShows(): Promise<ShowRecord[]> {
+    const rows = await this.db.select().from(shows);
+    return rows.map(toShowRecord);
+  }
+
+  async updateShow(id: number, fields: UpdateShowFields): Promise<void> {
+    const set: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+    if (fields.name !== undefined) {
+      set.name = fields.name;
+      set.slug = slugify(fields.name);
+    }
+    if (fields.fallbackPolicy !== undefined) set.fallbackPolicy = fields.fallbackPolicy;
+    if (fields.trustAutoAir !== undefined) set.trustAutoAir = fields.trustAutoAir;
+    if (fields.replayFlag !== undefined) set.replayFlag = fields.replayFlag;
+    if (fields.contributorTz !== undefined) set.contributorTz = fields.contributorTz;
+    if (fields.dropFolderPath !== undefined) set.dropFolderPath = fields.dropFolderPath;
+    await this.db.update(shows).set(set).where(eq(shows.id, id));
+  }
+
+  async slotsForShow(showId: number): Promise<SlotRecord[]> {
+    const rows = await this.db
+      .select({ slot: slots, showName: shows.name })
+      .from(slots)
+      .innerJoin(shows, eq(slots.showId, shows.id))
+      .where(eq(slots.showId, showId));
+    return rows.map((row) => toSlotRecord(row.slot, row.showName));
+  }
+
+  async dropFolders(): Promise<{ showId: number; name: string; path: string }[]> {
+    const rows = await this.db.select().from(shows).where(isNotNull(shows.dropFolderPath));
+    return rows.flatMap((row) =>
+      row.dropFolderPath === null
+        ? []
+        : [{ showId: row.id, name: row.name, path: row.dropFolderPath }],
+    );
+  }
+
   async findOccurrenceRows(stationId: string, fromUtc: Date, toUtc: Date): Promise<Occurrence[]> {
     const from = fromUtc.toISOString();
     const to = toUtc.toISOString();
@@ -174,7 +252,14 @@ export class DrizzleSchedulingRepo implements SchedulingRepo {
 }
 
 type SlotRow = typeof slots.$inferSelect;
+type ShowRow = typeof shows.$inferSelect;
 type OccurrenceRow = typeof occurrences.$inferSelect;
+
+/** The row IS the record minus timestamps — enum/boolean narrowing comes from the schema. */
+function toShowRecord(row: ShowRow): ShowRecord {
+  const { createdAt: _createdAt, updatedAt: _updatedAt, ...record } = row;
+  return record;
+}
 
 function toSlotRecord(row: SlotRow, showName: string | null): SlotRecord {
   return {
@@ -208,7 +293,7 @@ function toOccurrence(row: OccurrenceRow): Occurrence {
 export const occurrenceRowId = encodeOccurrenceId;
 
 /** docs/3 D3 naming: lowercase, ASCII-folded, hyphen-slugged. */
-function slugify(name: string): string {
+export function slugify(name: string): string {
   return name
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")

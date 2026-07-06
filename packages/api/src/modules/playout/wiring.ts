@@ -5,6 +5,8 @@
  * this file, so nothing outside the composition root can couple to AzuraCast.
  */
 export { type AdapterHealth, AzuracastClient } from "./adapters/azuracast/client";
+export { AzuracastDirectoryAdapter } from "./adapters/azuracast/directory-adapter";
+export { AzuracastFilesAdapter } from "./adapters/azuracast/files-adapter";
 export { AzuracastPlayoutStateAdapter } from "./adapters/azuracast/now-adapter";
 export { AzuracastMirrorScheduleAdapter } from "./adapters/azuracast/schedule-adapter";
 export { DrizzleNowCacheRepo } from "./repo";

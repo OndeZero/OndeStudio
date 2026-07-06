@@ -4,8 +4,12 @@
  * This package depends on neither `api` nor `web`.
  */
 export * from "./api-error";
+export * from "./auth";
+export * from "./board";
+export * from "./media";
 export * from "./on-air";
 export * from "./scheduling";
 export * from "./scheduling-states";
+export * from "./shows";
 export * from "./sse";
 export * from "./station";

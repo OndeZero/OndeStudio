@@ -22,6 +22,8 @@ const EnvSchema = z.object({
     .string()
     .default("Europe/Paris")
     .refine(isValidTimeZone, { message: "not a valid IANA timezone" }),
+  /** Cookie-signing secret; when absent one is generated into data/session-secret. */
+  SESSION_SECRET: z.string().min(32).optional(),
 });
 
 function isValidTimeZone(zone: string): boolean {
@@ -45,6 +47,7 @@ export interface AppConfig {
   testStation: StationId;
   nowPollSeconds: number;
   stationTz: string;
+  sessionSecret: string | undefined;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
@@ -72,6 +75,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     testStation,
     nowPollSeconds: e.NOW_POLL_SECONDS,
     stationTz: e.STATION_TZ,
+    sessionSecret: e.SESSION_SECRET,
   };
 }
 

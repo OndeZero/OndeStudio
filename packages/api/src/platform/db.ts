@@ -15,6 +15,11 @@ export type Db = ReturnType<typeof drizzle>;
 const REPO_ROOT = fileURLToPath(new URL("../../../..", import.meta.url));
 const MIGRATIONS_FOLDER = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
+/** Repo-root-anchored data path (same rule as the DB) for siblings like the session secret. */
+export function resolveDataPath(relative: string): string {
+  return isAbsolute(relative) ? relative : resolve(REPO_ROOT, relative);
+}
+
 /**
  * Opens (creating if needed) the SQLite database and applies pending
  * migrations idempotently at startup (docs/2 §5.6). One file, WAL mode:

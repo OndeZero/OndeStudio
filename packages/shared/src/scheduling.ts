@@ -145,6 +145,13 @@ export type PatchOccurrenceInput = z.infer<typeof PatchOccurrenceInputSchema>;
 /** Payload of the `grid` SSE channel — a hint to refetch the visible window. */
 export const GridChangedEventSchema = z.object({
   station: StationSlugSchema,
-  reason: z.enum(["slot-created", "slot-updated", "slot-deleted", "occurrence-patched"]),
+  /** `show-updated` = a show rename repainted the titles slots fall back to. */
+  reason: z.enum([
+    "slot-created",
+    "slot-updated",
+    "slot-deleted",
+    "occurrence-patched",
+    "show-updated",
+  ]),
 });
 export type GridChangedEvent = z.infer<typeof GridChangedEventSchema>;

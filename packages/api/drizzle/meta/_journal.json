@@ -15,6 +15,20 @@
       "when": 1783284966127,
       "tag": "0001_slimy_king_cobra",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783319279890,
+      "tag": "0002_nosy_white_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1783320863896,
+      "tag": "0003_overjoyed_skaar",
+      "breakpoints": true
     }
   ]
 }

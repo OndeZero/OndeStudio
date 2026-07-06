@@ -5,7 +5,8 @@
  */
 export interface GridChangedDomainEvent {
   station: string;
-  reason: "slot-created" | "slot-updated" | "slot-deleted" | "occurrence-patched";
+  /** `show-updated` = a rename repainted the titles slots fall back to. */
+  reason: "slot-created" | "slot-updated" | "slot-deleted" | "occurrence-patched" | "show-updated";
 }
 
 declare module "../../kernel/event-bus" {
