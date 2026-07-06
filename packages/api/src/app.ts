@@ -13,7 +13,12 @@ import {
 } from "./modules/collaboration";
 import { DrizzleCollaborationRepo } from "./modules/collaboration/wiring";
 import { ContentService, createContentRoutes } from "./modules/content";
-import { BroadcasterService, createBroadcasterRoutes, createPeopleRoutes, PeopleService } from "./modules/people";
+import {
+  BroadcasterService,
+  createBroadcasterRoutes,
+  createPeopleRoutes,
+  PeopleService,
+} from "./modules/people";
 import { DrizzleBroadcasterRepo, DrizzlePeopleRepo } from "./modules/people/wiring";
 import { createPlayoutRoutes, onAirToContract, PlayoutService } from "./modules/playout";
 import {
@@ -21,9 +26,16 @@ import {
   AzuracastDirectoryAdapter,
   AzuracastFilesAdapter,
   AzuracastMirrorScheduleAdapter,
+  AzuracastPlaylistAdapter,
   AzuracastPlayoutStateAdapter,
   AzuracastStreamerAdapter,
+  createDriverRoutes,
   DrizzleNowCacheRepo,
+  DrizzleProjectionRepo,
+  PlayoutDriver,
+  type ProjectableSlot,
+  type SlotSinkPort,
+  type SlotSourcePort,
 } from "./modules/playout/wiring";
 import {
   createSchedulingRoutes,
@@ -105,6 +117,50 @@ export function buildServer(config: AppConfig = loadConfig()) {
     ownership: { ownedFolders: (station) => showService.dropFolders(station) },
   });
 
+  // driver (M3, RFC 0001): project validated weekly show/series/echo slots to
+  // AzuraCast as tagged playlists. Writes reach ONLY config.writeStations
+  // (docs/2 §7.7); the ports bridge scheduling's model to the write adapter.
+  const PROJECTED_KINDS = new Set(["show", "series", "echo"]);
+  const slotSource: SlotSourcePort = {
+    listProjectable: async (station) => {
+      const records = await schedulingService.listSlots(station);
+      const projectable: ProjectableSlot[] = [];
+      for (const { slot, showName } of records) {
+        if (slot.negotiationDefault !== "validated" || !PROJECTED_KINDS.has(slot.kind)) continue;
+        const item = slot.rule.weeklyScheduleItems(slot.durationMin);
+        if (!item) continue; // one-off / non-weekly stays OS-truth on the grid (RFC 0001)
+        const title = slot.displayTitle(showName);
+        projectable.push({
+          slotId: slot.id,
+          title,
+          name: `[OndeStudio] ${title}`,
+          scheduleItems: [item],
+          mediaIds: [], // episode-queue auto-fill is not built yet
+        });
+      }
+      return ok(projectable);
+    },
+  };
+  const slotSink: SlotSinkPort = {
+    applyScheduleFromAzuracast: async (station, slotId, sched) => {
+      const result = await schedulingService.updateSlot(station, slotId, {
+        recurrence: { type: "weekly", weekdays: sched.weekdays, time: sched.time },
+        durationMin: sched.durationMin,
+      });
+      return result.ok ? ok(undefined) : result;
+    },
+  };
+  const driver = new PlayoutDriver({
+    write: new AzuracastPlaylistAdapter(azuracast, config.writeStations),
+    projections: new DrizzleProjectionRepo(db),
+    slots: slotSource,
+    sink: slotSink,
+    writeStations: config.writeStations,
+    adapterHealthy: () => azuracast.health().circuit === "closed",
+    clock: systemClock,
+    logger: logger.child({ component: "driver" }),
+  });
+
   // collaboration: the board over polymorphic anchors — its ports are small
   // composition-root adapters over scheduling and people (docs/2 §3.4)
   const anchors: AnchorResolverPort = {
@@ -161,6 +217,8 @@ export function buildServer(config: AppConfig = loadConfig()) {
   });
   bus.on("scheduling.grid-changed", (event) => {
     sseHub.publish(event.station, "grid", "grid", event);
+    // Apply-with-undo (§7.5): debounce the AzuraCast push so an undo cancels it.
+    driver.scheduleRun(event.station);
   });
   bus.on("collaboration.card-changed", (event) => {
     sseHub.publish(event.station, "board", "board", event);
@@ -205,13 +263,17 @@ export function buildServer(config: AppConfig = loadConfig()) {
   api.route("/", createPeopleRoutes(peopleService, cookieSecret));
   api.route(
     "/",
-    createBroadcasterRoutes(broadcasterService, config.writeStations.map((s) => s.value)),
+    createBroadcasterRoutes(
+      broadcasterService,
+      config.writeStations.map((s) => s.value),
+    ),
   );
   api.route("/", createPlayoutRoutes(playoutService));
   api.route("/", createSchedulingRoutes(schedulingService));
   api.route("/", createShowRoutes(showService));
   api.route("/", createContentRoutes(contentService));
   api.route("/", createCollaborationRoutes(collaborationService));
+  api.route("/", createDriverRoutes(driver, config.writeStations));
   api.route(
     "/",
     createSseRoutes(sseHub, logger, {
@@ -255,8 +317,19 @@ export function buildServer(config: AppConfig = loadConfig()) {
         config.nowPollSeconds * 1000,
       );
     });
+
+    // Driver: catch up existing validated slots at boot, then sweep for drift
+    // (≤30s freshness, §6). No-op when no station is writable (docs/2 §7.7).
+    let driverTimer: ReturnType<typeof setInterval> | null = null;
+    if (driver.isDriving) {
+      void driver.runOnce();
+      driverTimer = setInterval(() => void driver.runOnce(), 30_000);
+    }
+
     return () => {
       for (const timer of timers) clearInterval(timer);
+      if (driverTimer) clearInterval(driverTimer);
+      driver.stop();
     };
   };
 

@@ -65,6 +65,28 @@ export class RecurrenceRule extends ValueObject {
   }
 
   /**
+   * AzuraCast `schedule_items` for write-back (RFC 0001) — the exact inverse of
+   * the mirror read: DST-naive `HHMM` local times + ISO weekdays, `end <= start`
+   * wraps past midnight, and AzuraCast applies them in the station tz (so no DST
+   * math on write). Only weekly rules project; one-offs return null (documented
+   * gap — they stay OS-truth on the grid).
+   */
+  weeklyScheduleItems(
+    durationMin: number,
+  ): { startTime: number; endTime: number; days: number[] } | null {
+    if (this.pattern.type !== "weekly") return null;
+    const [hourRaw, minuteRaw] = this.pattern.time.split(":");
+    const startMinutes = Number(hourRaw) * 60 + Number(minuteRaw);
+    const endMinutes = (startMinutes + durationMin) % (24 * 60);
+    const toHhmm = (mins: number): number => Math.floor(mins / 60) * 100 + (mins % 60);
+    return {
+      startTime: toHhmm(startMinutes),
+      endTime: toHhmm(endMinutes),
+      days: [...this.pattern.weekdays].sort((a, b) => a - b),
+    };
+  }
+
+  /**
    * All series times whose [start, end) intersects the UTC window. Iterates
    * station-tz calendar days with a one-day margin so an occurrence that
    * starts before the window but runs into it (overnight shows) is included.

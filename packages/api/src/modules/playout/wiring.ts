@@ -8,6 +8,11 @@ export { type AdapterHealth, AzuracastClient } from "./adapters/azuracast/client
 export { AzuracastDirectoryAdapter } from "./adapters/azuracast/directory-adapter";
 export { AzuracastFilesAdapter } from "./adapters/azuracast/files-adapter";
 export { AzuracastPlayoutStateAdapter } from "./adapters/azuracast/now-adapter";
-export { AzuracastStreamerAdapter } from "./adapters/azuracast/streamer-adapter";
+export { AzuracastPlaylistAdapter } from "./adapters/azuracast/playlist-adapter";
 export { AzuracastMirrorScheduleAdapter } from "./adapters/azuracast/schedule-adapter";
+export { AzuracastStreamerAdapter } from "./adapters/azuracast/streamer-adapter";
+export { PlayoutDriver } from "./driver";
+export { createDriverRoutes } from "./driver-routes";
+export type { ProjectableSlot, ScheduleItem, SlotSinkPort, SlotSourcePort } from "./ports";
+export { DrizzleProjectionRepo } from "./projection-repo";
 export { DrizzleNowCacheRepo } from "./repo";

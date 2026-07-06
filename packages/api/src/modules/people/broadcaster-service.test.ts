@@ -43,7 +43,10 @@ class FakeStreamers implements StreamerDirectoryPort {
     if (this.fail) return err(DomainError.upstreamUnavailable("down"));
     return ok([...this.mapFor(station).values()]);
   }
-  async create(station: StationId, def: StreamerDef): Promise<Result<{ ref: string }, DomainError>> {
+  async create(
+    station: StationId,
+    def: StreamerDef,
+  ): Promise<Result<{ ref: string }, DomainError>> {
     if (this.fail) return err(DomainError.upstreamUnavailable("down"));
     const ref = String(this.nextRef++);
     this.mapFor(station).set(ref, {

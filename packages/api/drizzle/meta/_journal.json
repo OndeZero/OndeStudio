@@ -43,6 +43,13 @@
       "when": 1783332948118,
       "tag": "0005_abnormal_grandmaster",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1783365529369,
+      "tag": "0006_adorable_landau",
+      "breakpoints": true
     }
   ]
 }

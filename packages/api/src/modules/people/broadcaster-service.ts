@@ -207,10 +207,7 @@ export class BroadcasterService {
   }
 
   /** Push the definition to every fan-out station we may write to; collect honest warnings. */
-  private async pushAll(
-    row: BroadcasterRow,
-    secrets: { password?: string },
-  ): Promise<string[]> {
+  private async pushAll(row: BroadcasterRow, secrets: { password?: string }): Promise<string[]> {
     const warnings: string[] = [];
     for (const { station, isMain } of this.fanoutStations()) {
       const ref = isMain ? row.mainStreamerRef : row.testStreamerRef;

@@ -87,6 +87,31 @@ describe("RecurrenceRule — DST (Europe/Paris 2026: spring 2026-03-29, fall 202
   });
 });
 
+describe("RecurrenceRule — schedule_items (write-back, RFC 0001)", () => {
+  test("weekly → HHMM start/end + ISO days, DST-naive (no offset math)", () => {
+    // Thursday 22:00 + 120min → 00:00 next day (wraps past midnight).
+    const rule = weekly([4], "22:00");
+    expect(rule.weeklyScheduleItems(120)).toEqual({ startTime: 2200, endTime: 0, days: [4] });
+    // Friday 09:30 + 90min → 11:00.
+    expect(weekly([5], "09:30").weeklyScheduleItems(90)).toEqual({
+      startTime: 930,
+      endTime: 1100,
+      days: [5],
+    });
+    // Multiple days sorted; a 24h duration wraps back to the same HHMM.
+    expect(weekly([6, 2], "12:00").weeklyScheduleItems(60)).toEqual({
+      startTime: 1200,
+      endTime: 1300,
+      days: [2, 6],
+    });
+  });
+
+  test("one-off rules do not project (return null)", () => {
+    const rule = unwrap(RecurrenceRule.from({ type: "once", startsAtWall: "2026-07-10T21:00" }));
+    expect(rule.weeklyScheduleItems(60)).toBeNull();
+  });
+});
+
 describe("RecurrenceRule — one-off and DB round-trip", () => {
   test("one-off wall datetime materializes once, only when intersecting", () => {
     const rule = unwrap(RecurrenceRule.from({ type: "once", startsAtWall: "2026-07-10T21:00" }));
