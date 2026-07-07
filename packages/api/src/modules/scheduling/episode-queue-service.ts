@@ -69,7 +69,11 @@ export class EpisodeQueueService {
       const existingByFile = new Map(existing.map((e) => [e.azFileId, e]));
       const consumedFileIds = await this.consumedFileIds(showId, existing);
 
-      let order = existing.length;
+      // Append after the current tail — max(queueOrder)+1, NOT the row count.
+      // deleteEpisodesExcept leaves holes without renumbering, so a count can
+      // reuse a live order and sort a fresh arrival ahead of an older waiting
+      // episode — corrupting the arrival order that drives airing (ADR-0013).
+      let order = existing.reduce((max, episode) => Math.max(max, episode.queueOrder + 1), 0);
       for (const file of files.value) {
         if (existingByFile.has(file.azFileId)) continue;
         await this.deps.repo.insertEpisode({

@@ -201,6 +201,32 @@ describe("episode queue fill", () => {
     expect(q.ok && q.value.episodes.map((e) => e.azFileId)).toEqual(["A"]);
   });
 
+  test("queue order survives an unconsumed delete-then-add (no order collision)", async () => {
+    // Orphan show (no slot) keeps episodes unconsumed so the queue order is the
+    // whole story — regression for queueOrder derived from the row count.
+    const { repo, eq } = await setup();
+    const orphan = await repo.findOrCreateShow("Order Show");
+    await repo.updateShow(orphan.id, { dropFolderPath: "[SHOWS]/Order" });
+
+    setFolder(
+      file("F1", "[SHOWS]/Order/1.flac"),
+      file("F2", "[SHOWS]/Order/2.flac"),
+      file("F3", "[SHOWS]/Order/3.flac"),
+    );
+    await eq.scanAndFill(station, orphan.id); // qo 0,1,2
+
+    // F1 and F2 vanish while unconsumed → their episodes are deleted, F3 stays.
+    setFolder(file("F3", "[SHOWS]/Order/3.flac"));
+    await eq.scanAndFill(station, orphan.id);
+
+    // A fresh file arrives — it must queue AFTER the older still-waiting F3.
+    setFolder(file("F3", "[SHOWS]/Order/3.flac"), file("F4", "[SHOWS]/Order/4.flac"));
+    await eq.scanAndFill(station, orphan.id);
+
+    const q = await eq.queue(station, orphan.id);
+    expect(q.ok && q.value.episodes.map((e) => e.azFileId)).toEqual(["F3", "F4"]);
+  });
+
   test("replay_previous fills the nearest still-empty occurrence when the queue runs dry", async () => {
     const { clock, grid, eq, showId } = await setup({
       trustAutoAir: true,
