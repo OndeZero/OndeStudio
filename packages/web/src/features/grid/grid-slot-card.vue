@@ -143,7 +143,7 @@ function centerOf(target: EventTarget | null): { x: number; y: number } {
       <span class="kind-glyph" :class="{ 'kind-live': occ.kind === 'live' }" :title="occ.kind">
         {{ glyph }}
       </span>
-      <span class="card-title">{{ occ.title }}</span>
+      <span class="card-title" :title="occ.episodeTitle ?? undefined">{{ occ.title }}</span>
       <span v-if="occ.moved" class="moved-glyph" title="Moved from its series time">↷</span>
     </header>
     <div class="card-time">{{ timeRange }}</div>

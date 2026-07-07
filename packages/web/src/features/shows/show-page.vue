@@ -7,6 +7,7 @@ import { useBoardStore } from "../board/board-store";
 import CreateCardDialog from "../board/create-card-dialog.vue";
 import { useGridStore } from "../grid/grid-store";
 import { SLOT_KIND_GLYPHS } from "../grid/grid-symbols";
+import ShowEpisodeQueue from "./show-episode-queue.vue";
 import ShowOccurrenceList from "./show-occurrence-list.vue";
 import ShowSettingsForm from "./show-settings-form.vue";
 import ShowThreadList from "./show-thread-list.vue";
@@ -128,6 +129,8 @@ function openCard(id: number): void {
         </li>
       </ul>
     </section>
+
+    <ShowEpisodeQueue :show-id="detail.id" :drop-folder-path="detail.dropFolderPath" />
 
     <div class="show-columns">
       <ShowOccurrenceList

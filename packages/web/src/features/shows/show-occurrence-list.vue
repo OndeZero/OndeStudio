@@ -33,6 +33,7 @@ function label(occ: Occurrence): string {
           />
           <span class="occ-when">{{ label(occ) }}</span>
           <span class="occ-title">{{ occ.title }}</span>
+          <span v-if="occ.episodeTitle" class="occ-episode">· {{ occ.episodeTitle }}</span>
         </button>
       </li>
     </ul>
@@ -101,6 +102,13 @@ function label(occ: Occurrence): string {
 .occ-title {
   overflow-wrap: anywhere;
   color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+/* The episode filling this occurrence (PD §4.5) — a quiet trailing note. */
+.occ-episode {
+  overflow-wrap: anywhere;
+  color: var(--color-accent);
   font-size: var(--text-xs);
 }
 </style>
