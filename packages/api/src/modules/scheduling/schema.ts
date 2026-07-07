@@ -49,6 +49,32 @@ export const slots = sqliteTable("slot", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/**
+ * Episodes feeding a show's occurrences (PD §4.5, ADR-0013). Phase-1 identity
+ * is the AzuraCast file id (fingerprints need the media filesystem — deferred).
+ * A file dropped in the show's folder becomes an episode; the queue is ordered
+ * by arrival and manually reorderable.
+ */
+export const episodes = sqliteTable(
+  "episode",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    showId: integer("show_id")
+      .notNull()
+      .references(() => shows.id, { onDelete: "cascade" }),
+    /** AzuraCast file id — the phase-1 episode identity (ADR-0013). */
+    azFileId: text("az_file_id").notNull(),
+    path: text("path").notNull(),
+    title: text("title").notNull(),
+    artist: text("artist"),
+    durationSec: integer("duration_sec"),
+    /** Manual reorder within the queue; ties break on arrival (id). */
+    queueOrder: integer("queue_order").notNull().default(0),
+    arrivedAt: text("arrived_at").notNull(),
+  },
+  (table) => [unique().on(table.showId, table.azFileId)],
+);
+
 export const occurrences = sqliteTable(
   "occurrence",
   {
@@ -64,6 +90,8 @@ export const occurrences = sqliteTable(
     contentState: text("content_state", { enum: ["empty", "received", "ready", "aired"] })
       .notNull()
       .default("empty"),
+    /** The bound episode (PD §4.5); NULL = empty/rotation-covered. */
+    episodeId: integer("episode_id").references(() => episodes.id, { onDelete: "set null" }),
     /** JSON array of issue flags (PD §4.4) — orthogonal to the pipeline state. */
     issueFlags: text("issue_flags").notNull().default("[]"),
     contentDurationMin: integer("content_duration_min"),

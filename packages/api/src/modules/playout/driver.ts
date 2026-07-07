@@ -214,6 +214,9 @@ export class PlayoutDriver {
           touch: true,
         });
       }
+      // The schedule is settled but the episode may have advanced — keep the
+      // playlist's media exactly the current episode (idempotent, PD §4.11).
+      if (allowWrites && curRef) await this.enforceMedia(station, curRef, slot);
       return;
     }
     if (!allowWrites) return; // within the undo window — observe only
@@ -226,8 +229,7 @@ export class PlayoutDriver {
       curRef ?? "",
       blockFor(slot, proj.tagMarker),
     );
-    if (slot.mediaIds.length > 0 && curRef)
-      await this.deps.write.setBlockMedia(station, curRef, slot.mediaIds);
+    if (curRef) await this.enforceMedia(station, curRef, slot);
     if (!upd.ok) this.deps.logger.warn("driver: update push failed", { slotId: slot.slotId });
     // Refresh from the ACTUAL upstream state whether or not the write reported
     // ok: a timed-out PUT that landed must not read as our own edit next tick.
@@ -244,6 +246,7 @@ export class PlayoutDriver {
     if (upstream) {
       // ADOPT an already-tagged playlist (e.g. from a timed-out create) — no
       // second POST. The next reconcile pushes it toward `desired` if it differs.
+      await this.enforceMedia(station, upstream.ref, slot);
       await this.persistNew(
         station,
         slot,
@@ -261,8 +264,7 @@ export class PlayoutDriver {
       });
       return; // if it actually landed, next reconcile adopts it by marker
     }
-    if (slot.mediaIds.length > 0)
-      await this.deps.write.setBlockMedia(station, created.value.ref, slot.mediaIds);
+    await this.enforceMedia(station, created.value.ref, slot);
     const readback = await this.deps.write.readScheduleBlock(station, created.value.ref);
     const lastSeen =
       readback.ok && readback.value ? normalizeSnapshot(readback.value) : normalizeDesired(slot);
@@ -271,6 +273,26 @@ export class PlayoutDriver {
       station: station.value,
       slotId: slot.slotId,
     });
+  }
+
+  /**
+   * Assert the projected playlist's media = the slot's current episode (or empty
+   * when none is filled). `setBlockMedia` is exact-membership and idempotent, so
+   * this is a no-op upstream when already correct; a failure degrades the overlay
+   * and retries next tick (invariant 1 — air is never in the path).
+   */
+  private async enforceMedia(
+    station: StationId,
+    ref: string,
+    slot: ProjectableSlot,
+  ): Promise<void> {
+    const result = await this.deps.write.setBlockMedia(station, ref, slot.mediaIds);
+    if (!result.ok) {
+      this.deps.logger.warn("driver: media assign failed", {
+        slotId: slot.slotId,
+        reason: result.error.message,
+      });
+    }
   }
 
   private async refreshBookkeeping(

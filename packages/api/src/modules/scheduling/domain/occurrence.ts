@@ -35,6 +35,8 @@ interface OccurrenceProps {
   content: ContentPipeline;
   issueFlags: readonly IssueFlag[];
   contentDurationMin: number | null;
+  /** The bound episode (PD §4.5); null = empty/rotation-covered. */
+  episodeId: number | null;
   /** True when an exception row backs this occurrence in the DB. */
   persisted: boolean;
 }
@@ -63,6 +65,7 @@ export class Occurrence extends Entity<string> {
       content: ContentPipeline.of("empty"),
       issueFlags: [],
       contentDurationMin: null,
+      episodeId: null,
       persisted: false,
     });
   }
@@ -91,6 +94,9 @@ export class Occurrence extends Entity<string> {
   }
   get contentDurationMin(): number | null {
     return this.props.contentDurationMin;
+  }
+  get episodeId(): number | null {
+    return this.props.episodeId;
   }
   get persisted(): boolean {
     return this.props.persisted;
@@ -137,5 +143,18 @@ export class Occurrence extends Entity<string> {
 
   withContentDuration(minutes: number | null): Occurrence {
     return new Occurrence({ ...this.props, contentDurationMin: minutes });
+  }
+
+  /**
+   * Bind (or clear) the episode that airs here (PD §4.5). Binding advances the
+   * content pipeline: `ready` when the show trusts auto-fed episodes, else
+   * `received` (awaiting a quick review). Clearing returns it to `empty`.
+   */
+  withEpisode(episodeId: number | null, trustAutoAir: boolean): Occurrence {
+    const content =
+      episodeId === null
+        ? ContentPipeline.of("empty")
+        : ContentPipeline.of(trustAutoAir ? "ready" : "received");
+    return new Occurrence({ ...this.props, episodeId, content });
   }
 }

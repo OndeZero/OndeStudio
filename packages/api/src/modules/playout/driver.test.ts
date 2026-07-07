@@ -31,6 +31,9 @@ class FakePlayout implements PlayoutWritePort {
   createCalls = 0;
   updateCalls = 0;
   deleteCalls = 0;
+  setMediaCalls = 0;
+  /** Exact media membership per playlist ref (setBlockMedia is exact-membership). */
+  media = new Map<string, string[]>();
   /** Simulate a PUT that lands upstream but whose response times out. */
   landButFailNextUpdate = false;
   private nextId = 500;
@@ -97,7 +100,13 @@ class FakePlayout implements PlayoutWritePort {
     this.playlists.delete(ref);
     return ok(undefined);
   }
-  async setBlockMedia(): Promise<Result<void, DomainError>> {
+  async setBlockMedia(
+    _s: StationId,
+    ref: string,
+    mediaIds: string[],
+  ): Promise<Result<void, DomainError>> {
+    this.setMediaCalls += 1;
+    this.media.set(ref, [...mediaIds]);
     return ok(undefined);
   }
   async readScheduleBlock(
@@ -329,5 +338,37 @@ describe("PlayoutDriver reconcile loop (RFC 0001)", () => {
     expect([...write.playlists.values()][0]?.scheduleItems[0]?.startTime).toBe(2300);
     await driver.runOnce();
     expect(await driver.listReconciliations()).toHaveLength(0); // no false "edited" drift
+  });
+
+  test("create assigns the slot's current episode media to the new playlist", async () => {
+    desired = [oneSlot({ mediaIds: ["707"] })];
+    await driver.runOnce();
+    const ref = [...write.playlists.keys()][0] ?? "";
+    expect(write.media.get(ref)).toEqual(["707"]); // episode aired, not an empty playlist
+  });
+
+  test("when only the episode advances, media is re-asserted though the schedule is in sync", async () => {
+    desired = [oneSlot({ mediaIds: ["707"] })];
+    await driver.runOnce();
+    const ref = [...write.playlists.keys()][0] ?? "";
+    expect(write.media.get(ref)).toEqual(["707"]);
+    expect(write.updateCalls).toBe(0); // schedule never changed
+
+    // Next week's occurrence carries a different episode — schedule identical.
+    desired = [oneSlot({ mediaIds: ["708"] })];
+    await driver.runOnce();
+    expect(write.media.get(ref)).toEqual(["708"]); // swapped without a schedule push
+    expect(write.updateCalls).toBe(0); // still no schedule update — media is separate
+  });
+
+  test("an empty queue prunes the playlist to no media (exact membership)", async () => {
+    desired = [oneSlot({ mediaIds: ["707"] })];
+    await driver.runOnce();
+    const ref = [...write.playlists.keys()][0] ?? "";
+    expect(write.media.get(ref)).toEqual(["707"]);
+
+    desired = [oneSlot({ mediaIds: [] })]; // episode consumed, none queued behind it
+    await driver.runOnce();
+    expect(write.media.get(ref)).toEqual([]);
   });
 });

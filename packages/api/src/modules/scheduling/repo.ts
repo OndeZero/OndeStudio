@@ -13,7 +13,7 @@ import { Negotiation } from "./domain/negotiation";
 import { encodeOccurrenceId, Occurrence, type OccurrenceKey } from "./domain/occurrence";
 import { RecurrenceRule } from "./domain/recurrence-rule";
 import { SlotDefinition, type SlotProps } from "./domain/slot-definition";
-import { occurrences, shows, slots } from "./schema";
+import { episodes, occurrences, shows, slots } from "./schema";
 
 /** A slot with the display context the grid needs (bound show's name). */
 export interface SlotRecord {
@@ -63,6 +63,13 @@ export interface SchedulingRepo {
   findOccurrenceRows(stationId: string, fromUtc: Date, toUtc: Date): Promise<Occurrence[]>;
   getOccurrenceRow(key: OccurrenceKey): Promise<Occurrence | null>;
   upsertOccurrence(occurrence: Occurrence): Promise<void>;
+  // Episode queue (PD §4.5, ADR-0013)
+  listEpisodes(showId: number): Promise<EpisodeRow[]>;
+  getEpisode(id: number): Promise<EpisodeRow | null>;
+  insertEpisode(episode: Omit<EpisodeRow, "id">): Promise<void>;
+  deleteEpisodesExcept(showId: number, keepAzFileIds: string[]): Promise<void>;
+  setEpisodeOrder(showId: number, orderedIds: number[]): Promise<void>;
+  occurrenceRowsForShow(showId: number): Promise<Occurrence[]>;
 }
 
 export class DrizzleSchedulingRepo implements SchedulingRepo {
@@ -249,6 +256,7 @@ export class DrizzleSchedulingRepo implements SchedulingRepo {
       endsAtUtc: occurrence.endsAtUtc.toISOString(),
       negotiationState: occurrence.negotiation.value,
       contentState: occurrence.content.value,
+      episodeId: occurrence.episodeId,
       issueFlags: JSON.stringify(occurrence.issueFlags),
       contentDurationMin: occurrence.contentDurationMin,
     };
@@ -259,6 +267,64 @@ export class DrizzleSchedulingRepo implements SchedulingRepo {
         target: [occurrences.slotId, occurrences.originalStartsAtUtc],
         set: row,
       });
+  }
+
+  // ── Episode queue (PD §4.5, ADR-0013) ──────────────────────────────────────
+
+  async listEpisodes(showId: number): Promise<EpisodeRow[]> {
+    const rows = await this.db
+      .select()
+      .from(episodes)
+      .where(eq(episodes.showId, showId))
+      .orderBy(episodes.queueOrder, episodes.id);
+    return rows.map(toEpisode);
+  }
+
+  async getEpisode(id: number): Promise<EpisodeRow | null> {
+    const row = (await this.db.select().from(episodes).where(eq(episodes.id, id)).limit(1))[0];
+    return row ? toEpisode(row) : null;
+  }
+
+  async insertEpisode(episode: {
+    showId: number;
+    azFileId: string;
+    path: string;
+    title: string;
+    artist: string | null;
+    durationSec: number | null;
+    queueOrder: number;
+    arrivedAt: string;
+  }): Promise<void> {
+    await this.db.insert(episodes).values(episode).onConflictDoNothing();
+  }
+
+  async deleteEpisodesExcept(showId: number, keepAzFileIds: string[]): Promise<void> {
+    const existing = await this.db.select().from(episodes).where(eq(episodes.showId, showId));
+    const keep = new Set(keepAzFileIds);
+    for (const row of existing) {
+      if (!keep.has(row.azFileId)) await this.db.delete(episodes).where(eq(episodes.id, row.id));
+    }
+  }
+
+  async setEpisodeOrder(showId: number, orderedIds: number[]): Promise<void> {
+    for (let i = 0; i < orderedIds.length; i++) {
+      const id = orderedIds[i];
+      if (id === undefined) continue;
+      await this.db
+        .update(episodes)
+        .set({ queueOrder: i })
+        .where(and(eq(episodes.id, id), eq(episodes.showId, showId)));
+    }
+  }
+
+  /** Persisted occurrence rows for a show's slots (the exceptions carrying episode/state). */
+  async occurrenceRowsForShow(showId: number): Promise<Occurrence[]> {
+    const rows = await this.db
+      .select({ occurrence: occurrences })
+      .from(occurrences)
+      .innerJoin(slots, eq(occurrences.slotId, slots.id))
+      .where(eq(slots.showId, showId));
+    return rows.map((row) => toOccurrence(row.occurrence));
   }
 }
 
@@ -298,7 +364,33 @@ function toOccurrence(row: OccurrenceRow): Occurrence {
     content: ContentPipeline.of(row.contentState as ContentState),
     issueFlags: JSON.parse(row.issueFlags) as IssueFlag[],
     contentDurationMin: row.contentDurationMin,
+    episodeId: row.episodeId,
   });
+}
+
+export interface EpisodeRow {
+  id: number;
+  showId: number;
+  azFileId: string;
+  path: string;
+  title: string;
+  artist: string | null;
+  durationSec: number | null;
+  queueOrder: number;
+  arrivedAt: string;
+}
+function toEpisode(row: typeof episodes.$inferSelect): EpisodeRow {
+  return {
+    id: row.id,
+    showId: row.showId,
+    azFileId: row.azFileId,
+    path: row.path,
+    title: row.title,
+    artist: row.artist,
+    durationSec: row.durationSec,
+    queueOrder: row.queueOrder,
+    arrivedAt: row.arrivedAt,
+  };
 }
 
 export const occurrenceRowId = encodeOccurrenceId;

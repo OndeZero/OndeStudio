@@ -26,3 +26,24 @@ export interface MirrorSchedulePort {
     windowToUtc: Date,
   ): Promise<Result<MirrorBlock[], DomainError>>;
 }
+
+/** One media file in a show's drop folder — the raw material of an episode (ADR-0013). */
+export interface FolderFile {
+  azFileId: string;
+  path: string;
+  title: string;
+  artist: string | null;
+  durationSec: number | null;
+}
+
+/**
+ * Reads the files in a show's drop folder (PD §4.5) so the episode queue can
+ * form itself. Implemented by the composition root over the content module's
+ * media store — scheduling never imports content at runtime.
+ */
+export interface MediaScanPort {
+  listFolderFiles(
+    station: StationId,
+    folderPath: string,
+  ): Promise<Result<FolderFile[], DomainError>>;
+}

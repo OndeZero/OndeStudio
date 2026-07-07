@@ -38,9 +38,12 @@ import {
   type SlotSourcePort,
 } from "./modules/playout/wiring";
 import {
+  createEpisodeRoutes,
   createSchedulingRoutes,
   createShowRoutes,
   decodeOccurrenceId,
+  EpisodeQueueService,
+  type MediaScanPort,
   SchedulingService,
   ShowService,
 } from "./modules/scheduling";
@@ -112,9 +115,41 @@ export function buildServer(config: AppConfig = loadConfig()) {
 
   // content: media browse through the playout files adapter; ownership badges
   // come from the shows' drop folders (PD §5.4)
+  const filesAdapter = new AzuracastFilesAdapter(azuracast);
   const contentService = new ContentService({
-    media: new AzuracastFilesAdapter(azuracast),
+    media: filesAdapter,
     ownership: { ownedFolders: (station) => showService.dropFolders(station) },
+  });
+
+  // episode queue (PD §4.5, ADR-0013): a show's drop folder feeds occurrences.
+  // MediaScanPort reads the folder's files through the same files adapter,
+  // carrying the az file id (which the browse contract drops) so episodes have
+  // an identity and the driver can assign real media.
+  const mediaScan: MediaScanPort = {
+    listFolderFiles: async (station, folderPath) => {
+      const files = await filesAdapter.listFiles(station);
+      if (!files.ok) return files;
+      const prefix = `${folderPath.replace(/\/+$/, "")}/`;
+      return ok(
+        files.value
+          .filter((f) => f.path.startsWith(prefix))
+          .map((f) => ({
+            azFileId: f.azFileId,
+            path: f.path,
+            title: f.title ?? f.path.split("/").pop() ?? f.path,
+            artist: f.artist,
+            durationSec: f.durationSec,
+          })),
+      );
+    },
+  };
+  const episodeQueueService = new EpisodeQueueService({
+    repo: schedulingRepo,
+    grid: schedulingService,
+    media: mediaScan,
+    bus,
+    clock: systemClock,
+    zone: config.stationTz,
   });
 
   // driver (M3, RFC 0001): project validated weekly show/series/echo slots to
@@ -124,18 +159,23 @@ export function buildServer(config: AppConfig = loadConfig()) {
   const slotSource: SlotSourcePort = {
     listProjectable: async (station) => {
       const records = await schedulingService.listSlots(station);
+      // Deterministic episode selection (PD §4.11): the media of each slot's
+      // nearest upcoming occurrence, so a projected playlist airs the right file
+      // and swaps as occurrences advance (ADR-0013).
+      const episodeMedia = await episodeQueueService.currentEpisodeMediaBySlot(station);
       const projectable: ProjectableSlot[] = [];
       for (const { slot, showName } of records) {
         if (slot.negotiationDefault !== "validated" || !PROJECTED_KINDS.has(slot.kind)) continue;
         const item = slot.rule.weeklyScheduleItems(slot.durationMin);
         if (!item) continue; // one-off / non-weekly stays OS-truth on the grid (RFC 0001)
         const title = slot.displayTitle(showName);
+        const media = episodeMedia.get(slot.id);
         projectable.push({
           slotId: slot.id,
           title,
           name: `[OndeStudio] ${title}`,
           scheduleItems: [item],
-          mediaIds: [], // episode-queue auto-fill is not built yet
+          mediaIds: media ? [media] : [],
         });
       }
       return ok(projectable);
@@ -272,6 +312,7 @@ export function buildServer(config: AppConfig = loadConfig()) {
   api.route("/", createPlayoutRoutes(playoutService));
   api.route("/", createSchedulingRoutes(schedulingService));
   api.route("/", createShowRoutes(showService));
+  api.route("/", createEpisodeRoutes(episodeQueueService));
   api.route("/", createContentRoutes(contentService));
   api.route("/", createCollaborationRoutes(collaborationService));
   api.route("/", createDriverRoutes(driver, config.writeStations));

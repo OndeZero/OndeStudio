@@ -12,8 +12,10 @@ export {
 export { decodeOccurrenceId, encodeOccurrenceId, Occurrence } from "./domain/occurrence";
 export { RecurrenceRule } from "./domain/recurrence-rule";
 export { SlotDefinition } from "./domain/slot-definition";
+export { EpisodeQueueService } from "./episode-queue-service";
+export { createEpisodeRoutes } from "./episode-routes";
 export type { GridChangedDomainEvent } from "./events";
-export type { MirrorBlock, MirrorSchedulePort } from "./ports";
+export type { FolderFile, MediaScanPort, MirrorBlock, MirrorSchedulePort } from "./ports";
 export type { SchedulingRepo, ShowRecord, SlotRecord, UpdateShowFields } from "./repo";
 export { createSchedulingRoutes } from "./routes";
 export { type EnrichedOccurrence, type GridFilters, SchedulingService } from "./service";

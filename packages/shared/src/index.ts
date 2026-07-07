@@ -8,6 +8,7 @@ export * from "./auth";
 export * from "./board";
 export * from "./broadcasters";
 export * from "./driver";
+export * from "./episodes";
 export * from "./media";
 export * from "./on-air";
 export * from "./scheduling";

@@ -1,3 +1,4 @@
+import { type Clock, systemClock } from "../../../../kernel/clock";
 import { DomainError } from "../../../../kernel/domain-error";
 import { err, ok, type Result } from "../../../../kernel/result";
 import type { StationId } from "../../../../kernel/station-id";
@@ -27,6 +28,19 @@ interface AzFileRow {
   playlists: { id: number }[];
 }
 
+/** Per-file playlist membership, cached briefly so one reconcile pass fetches once. */
+interface CachedMembership {
+  byFile: Map<number, Set<number>>;
+  atMs: number;
+}
+
+/**
+ * Membership changes at human speed and each reconcile pass runs synchronously;
+ * a short window lets every `setBlockMedia` in one pass share a single files
+ * read. Any write invalidates it, so it never serves state we just changed.
+ */
+const MEMBERSHIP_TTL_MS = 5_000;
+
 /**
  * Playlist write adapter (M3, RFC 0001) — the schedule-block half of
  * `PlayoutWritePort`. Two safety layers like the streamer adapter: the
@@ -35,9 +49,12 @@ interface AzFileRow {
  * auto-fill), so OndeStudio owns their membership fully.
  */
 export class AzuracastPlaylistAdapter implements PlayoutWritePort {
+  private readonly membershipCache = new Map<string, CachedMembership>();
+
   constructor(
     private readonly client: AzuracastClient,
     private readonly allowedWriteStations: StationId[],
+    private readonly clock: Clock = systemClock,
   ) {}
 
   async createScheduleBlock(
@@ -95,10 +112,15 @@ export class AzuracastPlaylistAdapter implements PlayoutWritePort {
   }
 
   /**
-   * Ensure these media files belong to the playlist (additive — the file PUT
-   * replaces a file's full membership, so we read-merge-write each one). Exact
-   * membership with pruning lands with the episode queue; M3 assigns the single
-   * deterministic episode when one exists (PD §4.11).
+   * Make the playlist's membership EXACTLY `mediaIds` (episode queue, PD §4.11 /
+   * ADR-0013): the deterministic episode of each slot's current occurrence, and
+   * nothing else. Prunes files that left and adds the ones that arrived; a file
+   * PUT replaces the file's full playlist set, so we edit around the other
+   * memberships we already know. Idempotent — zero writes when already exact.
+   *
+   * Projected playlists are OS-owned content, so this simply asserts the queue's
+   * truth; it is enforced on every reconcile rather than routed through the
+   * drift workflow (which stays scoped to schedule/name edits).
    */
   async setBlockMedia(
     station: StationId,
@@ -108,22 +130,66 @@ export class AzuracastPlaylistAdapter implements PlayoutWritePort {
     const guard = this.guardWrite(station);
     if (guard) return err(guard);
     const playlistId = Number(ref);
-    for (const mediaId of mediaIds) {
-      const file = await this.client.getJson<AzFileRow>(
-        `/api/station/${station.value}/file/${mediaId}`,
-      );
-      if (!file.ok) return file;
-      const membership = new Set(file.value.playlists.map((p) => p.id));
-      if (membership.has(playlistId)) continue;
-      membership.add(playlistId);
-      const put = await this.client.sendJson<unknown>(
-        "PUT",
-        `/api/station/${station.value}/file/${mediaId}`,
-        { playlists: [...membership].map((id) => ({ id })) },
-      );
+
+    const membership = await this.membershipByFile(station);
+    if (!membership.ok) return membership;
+    const byFile = membership.value;
+
+    // A desired file that no longer exists upstream can't be assigned — skip it
+    // (the drop-folder rescan drops its episode row on the next pass).
+    const desired = new Set(mediaIds.map(Number).filter((id) => byFile.has(id)));
+    const current = new Set<number>();
+    for (const [fileId, playlists] of byFile) if (playlists.has(playlistId)) current.add(fileId);
+
+    const toAdd = [...desired].filter((id) => !current.has(id));
+    const toRemove = [...current].filter((id) => !desired.has(id));
+    if (toAdd.length === 0 && toRemove.length === 0) return ok(undefined);
+
+    for (const fileId of toRemove) {
+      const next = new Set(byFile.get(fileId) ?? []);
+      next.delete(playlistId);
+      const put = await this.putFilePlaylists(station, fileId, next);
       if (!put.ok) return put;
     }
+    for (const fileId of toAdd) {
+      const next = new Set(byFile.get(fileId) ?? []);
+      next.add(playlistId);
+      const put = await this.putFilePlaylists(station, fileId, next);
+      if (!put.ok) return put;
+    }
+    this.membershipCache.delete(station.value); // membership changed — force a fresh read
     return ok(undefined);
+  }
+
+  /** Per-file playlist membership for the station, cached for one reconcile pass. */
+  private async membershipByFile(
+    station: StationId,
+  ): Promise<Result<Map<number, Set<number>>, DomainError>> {
+    const nowMs = this.clock.now().getTime();
+    const cached = this.membershipCache.get(station.value);
+    if (cached && nowMs - cached.atMs < MEMBERSHIP_TTL_MS) return ok(cached.byFile);
+
+    const response = await this.client.getJson<AzFileRow[]>(`/api/station/${station.value}/files`);
+    if (!response.ok) return response;
+    const byFile = new Map<number, Set<number>>();
+    for (const file of response.value) {
+      byFile.set(file.id, new Set(file.playlists.map((p) => p.id)));
+    }
+    this.membershipCache.set(station.value, { byFile, atMs: nowMs });
+    return ok(byFile);
+  }
+
+  private async putFilePlaylists(
+    station: StationId,
+    fileId: number,
+    playlistIds: Set<number>,
+  ): Promise<Result<void, DomainError>> {
+    const put = await this.client.sendJson<unknown>(
+      "PUT",
+      `/api/station/${station.value}/file/${fileId}`,
+      { playlists: [...playlistIds].map((id) => ({ id })) },
+    );
+    return put.ok ? ok(undefined) : put;
   }
 
   async listTaggedBlocks(
@@ -146,6 +212,8 @@ export class AzuracastPlaylistAdapter implements PlayoutWritePort {
           name: row.name,
           isEnabled: row.is_enabled,
           scheduleItems: row.schedule_items.map(fromAzItem),
+          // Media isn't part of drift detection — the driver enforces episode
+          // membership directly (setBlockMedia), so snapshots omit it.
           mediaIds: [],
         },
       });
@@ -169,7 +237,7 @@ export class AzuracastPlaylistAdapter implements PlayoutWritePort {
       name: response.value.name,
       isEnabled: response.value.is_enabled,
       scheduleItems: response.value.schedule_items.map(fromAzItem),
-      // Membership drift is out of M3 scope (no episode assignment yet).
+      // Media isn't compared via snapshots — the driver enforces it directly.
       mediaIds: [],
     });
   }
