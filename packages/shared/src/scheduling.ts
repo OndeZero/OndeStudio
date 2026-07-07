@@ -69,6 +69,8 @@ export const OccurrenceSchema = z.object({
   issueFlags: z.array(IssueFlagSchema),
   /** Actual content length once known — drives the inner fill (docs/2 §8.4). */
   contentDurationMin: z.number().int().positive().nullable(),
+  /** Title of the episode airing here (PD §4.5); null when the occurrence is empty. */
+  episodeTitle: z.string().nullable(),
 });
 export type Occurrence = z.infer<typeof OccurrenceSchema>;
 

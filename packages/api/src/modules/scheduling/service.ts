@@ -29,6 +29,8 @@ export interface EnrichedOccurrence {
   occurrence: Occurrence;
   slot: SlotDefinition;
   title: string;
+  /** Title of the bound episode (PD §4.5), null when the occurrence is empty. */
+  episodeTitle: string | null;
 }
 
 const MAX_WINDOW_DAYS = 45;
@@ -122,11 +124,23 @@ export class SchedulingService {
     filtered.sort(
       (a, b) => a.occurrence.startsAtUtc.getTime() - b.occurrence.startsAtUtc.getTime(),
     );
+    // One lookup for every bound episode in the window — the grid and show hub
+    // name the episode airing on each occurrence (PD §4.5).
+    const episodeIds = [
+      ...new Set(
+        filtered
+          .map(({ occurrence }) => occurrence.episodeId)
+          .filter((id): id is number => id !== null),
+      ),
+    ];
+    const titles = episodeIds.length ? await this.deps.repo.episodeTitles(episodeIds) : new Map();
     return ok(
       filtered.map(({ occurrence, record }) => ({
         occurrence,
         slot: record.slot,
         title: record.slot.displayTitle(record.showName),
+        episodeTitle:
+          occurrence.episodeId !== null ? (titles.get(occurrence.episodeId) ?? null) : null,
       })),
     );
   }
@@ -271,10 +285,13 @@ export class SchedulingService {
 
     await this.deps.repo.upsertOccurrence(occurrence);
     this.changed(station, "occurrence-patched");
+    const episode =
+      occurrence.episodeId !== null ? await this.deps.repo.getEpisode(occurrence.episodeId) : null;
     return ok({
       occurrence,
       slot: record.value.slot,
       title: record.value.slot.displayTitle(record.value.showName),
+      episodeTitle: episode?.title ?? null,
     });
   }
 

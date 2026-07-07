@@ -36,6 +36,7 @@ function occurrenceFixture(overrides: Partial<Occurrence> = {}): Occurrence {
     contentState: "ready",
     issueFlags: [],
     contentDurationMin: 118,
+    episodeTitle: null,
     ...overrides,
   };
 }

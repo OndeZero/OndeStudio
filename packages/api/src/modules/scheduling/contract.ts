@@ -16,13 +16,14 @@ export function occurrenceToContract(
   station: string,
   now: Date,
 ): OccurrenceDto {
-  const { occurrence, slot, title } = enriched;
+  const { occurrence, slot, title, episodeTitle } = enriched;
   return {
     id: occurrence.id,
     slotId: slot.id,
     station,
     kind: slot.kind,
     title,
+    episodeTitle,
     startsAt: occurrence.startsAtUtc.toISOString(),
     endsAt: occurrence.endsAtUtc.toISOString(),
     durationMin: occurrence.durationMin,

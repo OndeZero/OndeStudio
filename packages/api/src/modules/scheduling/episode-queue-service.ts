@@ -34,7 +34,8 @@ export class EpisodeQueueService {
 
   /** The queue view: each episode with the occurrence it fills, in queue order. */
   async queue(
-    station: StationId,
+    // Shows are station-agnostic in phase 1; the param keeps the route shape.
+    _station: StationId,
     showId: number,
   ): Promise<Result<EpisodeQueueResponse, DomainError>> {
     const show = await this.deps.repo.getShow(showId);

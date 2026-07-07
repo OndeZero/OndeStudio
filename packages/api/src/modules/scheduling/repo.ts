@@ -5,7 +5,7 @@ import type {
   NegotiationState,
   ReplayFlag,
 } from "@ondestudio/shared";
-import { and, eq, gte, isNotNull, lt, or } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lt, or } from "drizzle-orm";
 import { unwrap } from "../../kernel/result";
 import type { Db } from "../../platform/db";
 import { ContentPipeline } from "./domain/content-pipeline";
@@ -66,6 +66,7 @@ export interface SchedulingRepo {
   // Episode queue (PD §4.5, ADR-0013)
   listEpisodes(showId: number): Promise<EpisodeRow[]>;
   getEpisode(id: number): Promise<EpisodeRow | null>;
+  episodeTitles(ids: number[]): Promise<Map<number, string>>;
   insertEpisode(episode: Omit<EpisodeRow, "id">): Promise<void>;
   deleteEpisodesExcept(showId: number, keepAzFileIds: string[]): Promise<void>;
   setEpisodeOrder(showId: number, orderedIds: number[]): Promise<void>;
@@ -283,6 +284,15 @@ export class DrizzleSchedulingRepo implements SchedulingRepo {
   async getEpisode(id: number): Promise<EpisodeRow | null> {
     const row = (await this.db.select().from(episodes).where(eq(episodes.id, id)).limit(1))[0];
     return row ? toEpisode(row) : null;
+  }
+
+  async episodeTitles(ids: number[]): Promise<Map<number, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.db
+      .select({ id: episodes.id, title: episodes.title })
+      .from(episodes)
+      .where(inArray(episodes.id, ids));
+    return new Map(rows.map((row) => [row.id, row.title]));
   }
 
   async insertEpisode(episode: {
