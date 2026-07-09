@@ -48,6 +48,9 @@ watch(
 const slotTitle = ref("");
 const seriesRecurrence = ref<RecurrenceDraft>({ type: "weekly", weekdays: [1], time: "00:00" });
 const seriesDuration = ref(0);
+// The series editor stays tucked away — the popover is the 30-second-fix
+// surface first (move/resize/negotiate); editing the whole series is opt-in.
+const seriesOpen = ref(false);
 watch(
   slot,
   (s) => {
@@ -133,9 +136,14 @@ async function removeSlot(): Promise<void> {
 }
 
 // Clamp the popover into the viewport; CSS turns it into a bottom sheet ≤720px.
+// The expanded series editor is much taller, so reserve room for it (and lift
+// the popover if the click was low on the grid) — it scrolls within if needed.
+const estHeight = computed(() =>
+  seriesOpen.value ? Math.min(window.innerHeight * 0.8, 640) : 360,
+);
 const positionVars = computed(() => ({
   "--qe-x": `${Math.max(8, Math.min(props.anchor.x, window.innerWidth - 336))}px`,
-  "--qe-y": `${Math.max(8, Math.min(props.anchor.y, window.innerHeight - 400))}px`,
+  "--qe-y": `${Math.max(8, Math.min(props.anchor.y, window.innerHeight - estHeight.value - 8))}px`,
 }));
 
 function onDocumentPointerDown(event: PointerEvent): void {
@@ -180,7 +188,7 @@ onUnmounted(() => {
         }}<template v-if="occ.contentDurationMin !== null"> · {{ occ.contentDurationMin }} min</template>
       </span>
     </div>
-    <div v-if="transitions.length > 0 && !locked" class="os-row os-row--nowrap">
+    <div v-if="transitions.length > 0 && !locked" class="os-row qe-transitions">
       <span class="os-hint">change →</span>
       <button
         v-for="target in transitions"
@@ -229,29 +237,39 @@ onUnmounted(() => {
     </section>
 
     <section v-if="slot" class="qe-block">
-      <p class="qe-block-head">whole series</p>
-      <label class="os-field">
-        title
-        <input v-model="slotTitle" type="text" :placeholder="slot.showName ?? 'series title'" />
-      </label>
-      <RecurrenceFields v-model="seriesRecurrence" :default-day-iso="dayIso" />
-      <label class="os-field">
-        duration (min)
-        <input v-model.number="seriesDuration" type="number" min="15" max="1440" step="15" />
-      </label>
-      <div class="qe-series-actions">
-        <button
-          type="button"
-          class="os-btn os-btn--primary"
-          :disabled="!seriesDirty"
-          @click="saveSeries"
-        >
-          save series
-        </button>
-        <button type="button" class="os-btn os-btn--danger" @click="removeSlot">
-          delete
-        </button>
-      </div>
+      <button
+        type="button"
+        class="qe-disclosure"
+        :aria-expanded="seriesOpen"
+        @click="seriesOpen = !seriesOpen"
+      >
+        <span class="qe-caret" aria-hidden="true">{{ seriesOpen ? "▾" : "▸" }}</span>
+        whole series
+      </button>
+      <template v-if="seriesOpen">
+        <label class="os-field">
+          title
+          <input v-model="slotTitle" type="text" :placeholder="slot.showName ?? 'series title'" />
+        </label>
+        <RecurrenceFields v-model="seriesRecurrence" :default-day-iso="dayIso" />
+        <label class="os-field">
+          duration (min)
+          <input v-model.number="seriesDuration" type="number" min="15" max="1440" step="15" />
+        </label>
+        <div class="qe-series-actions">
+          <button
+            type="button"
+            class="os-btn os-btn--primary"
+            :disabled="!seriesDirty"
+            @click="saveSeries"
+          >
+            save series
+          </button>
+          <button type="button" class="os-btn os-btn--danger" @click="removeSlot">
+            delete
+          </button>
+        </div>
+      </template>
     </section>
   </div>
 </template>
@@ -276,6 +294,9 @@ onUnmounted(() => {
 
 /* Read-only state pills: negotiation and content, both border-colored inline. */
 .qe-status { align-items: center; }
+
+/* Reversible states give up to four targets — let them wrap, never clip. */
+.qe-transitions { align-items: center; }
 .state-chip {
   padding: 1px var(--space-2);
   border: 2px solid var(--color-border);
@@ -306,6 +327,29 @@ onUnmounted(() => {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+/* The series disclosure looks like a block label but toggles the editor. */
+.qe-disclosure {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.qe-disclosure:hover {
+  color: var(--color-text);
+}
+.qe-caret {
+  font-size: 0.7em;
 }
 .qe-series-actions {
   display: flex;
