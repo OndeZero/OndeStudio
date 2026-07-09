@@ -2,14 +2,18 @@
 import type { CreateSlotInput, SlotKind } from "@ondestudio/shared";
 import { SLOT_KINDS } from "@ondestudio/shared";
 import { computed, ref } from "vue";
-import { formatDayLabel, isoWeekdayOf } from "../../lib/station-time";
+import { isoWeekdayOf } from "../../lib/station-time";
 import { useGridStore } from "./grid-store";
 import { SLOT_KIND_GLYPHS } from "./grid-symbols";
+import RecurrenceFields from "./recurrence-fields.vue";
+import { draftToRecurrence, isRecurrenceValid, type RecurrenceDraft } from "./slot-recurrence";
 
 /**
  * Slot creation straight from a drag on empty grid space (or the "+ slot"
  * button): the drag gives day, start and duration; this dialog only asks
  * what cannot be drawn — kind, name, recurrence, born-validated (PD §4.4).
+ * Recurrence is the same control the quick-edit popover uses, so drawing a
+ * slot and editing one later look alike (M1 UX note).
  */
 const props = defineProps<{
   draft: { dayIso: string; time: string; durationMin: number };
@@ -22,28 +26,20 @@ const store = useGridStore();
 const kind = ref<SlotKind>("show");
 const title = ref("");
 const showName = ref("");
-const time = ref(props.draft.time);
+const recurrence = ref<RecurrenceDraft>({
+  type: "weekly",
+  weekdays: [isoWeekdayOf(props.draft.dayIso)],
+  time: props.draft.time,
+});
 const durationMin = ref(props.draft.durationMin);
-const weekly = ref(true);
 const bornValidated = ref(false);
 const submitting = ref(false);
-
-const WEEKDAY_NAMES = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
-const weekdayName = computed(() => WEEKDAY_NAMES[isoWeekdayOf(props.draft.dayIso) - 1] ?? "");
 
 const needsShow = computed(
   () => kind.value === "show" || kind.value === "series" || kind.value === "echo",
 );
 const valid = computed(() => {
-  if (!/^\d{2}:\d{2}$/.test(time.value) || durationMin.value < 15) return false;
+  if (durationMin.value < 15 || !isRecurrenceValid(recurrence.value)) return false;
   // Show-bound kinds need an identity; live/rotation need at least a label.
   return needsShow.value
     ? showName.value.trim().length > 0 || title.value.trim().length > 0
@@ -51,13 +47,12 @@ const valid = computed(() => {
 });
 
 async function submit(): Promise<void> {
-  if (!valid.value || submitting.value) return;
+  const rule = draftToRecurrence(recurrence.value);
+  if (!valid.value || !rule || submitting.value) return;
   submitting.value = true;
   const input: CreateSlotInput = {
     kind: kind.value,
-    recurrence: weekly.value
-      ? { type: "weekly", weekdays: [isoWeekdayOf(props.draft.dayIso)], time: time.value }
-      : { type: "once", startsAtWall: `${props.draft.dayIso}T${time.value}` },
+    recurrence: rule,
     durationMin: Math.round(durationMin.value),
     bornValidated: bornValidated.value,
   };
@@ -101,26 +96,12 @@ async function submit(): Promise<void> {
         <input v-model="title" type="text" :placeholder="needsShow ? 'slot label override' : 'e.g. Maigre — studio live'" />
       </label>
 
-      <div class="os-row">
-        <label class="os-field">
-          start
-          <input v-model="time" type="time" step="900" />
-        </label>
+      <fieldset class="dlg-recurrence">
+        <legend class="os-hint">recurrence</legend>
+        <RecurrenceFields v-model="recurrence" :default-day-iso="props.draft.dayIso" />
         <label class="os-field">
           duration (min)
           <input v-model.number="durationMin" type="number" min="15" max="1440" step="15" />
-        </label>
-      </div>
-
-      <fieldset class="dlg-recurrence">
-        <legend class="os-hint">recurrence</legend>
-        <label class="os-radio">
-          <input v-model="weekly" type="radio" :value="true" name="recurrence" />
-          weekly every {{ weekdayName }}
-        </label>
-        <label class="os-radio">
-          <input v-model="weekly" type="radio" :value="false" name="recurrence" />
-          one-off on {{ formatDayLabel(props.draft.dayIso) }}
         </label>
       </fieldset>
 

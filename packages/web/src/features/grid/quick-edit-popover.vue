@@ -10,6 +10,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { formatDayLabel, formatHm, isoDayOf } from "../../lib/station-time";
 import { useGridStore } from "./grid-store";
 import { ISSUE_FLAG_LETTERS, SLOT_KIND_GLYPHS } from "./grid-symbols";
+import RecurrenceFields from "./recurrence-fields.vue";
+import { draftToRecurrence, type RecurrenceDraft, recurrenceToDraft } from "./slot-recurrence";
 
 /**
  * The 30-second-fix surface (PD §8.1): move/resize by numbers, negotiate,
@@ -41,11 +43,19 @@ watch(
   { immediate: true },
 );
 
+// Series-level edits (whole slot): title, recurrence and duration. Seeded from
+// the slot and saved together, so editing a slot mirrors drawing one (M1 UX).
 const slotTitle = ref("");
+const seriesRecurrence = ref<RecurrenceDraft>({ type: "weekly", weekdays: [1], time: "00:00" });
+const seriesDuration = ref(0);
 watch(
   slot,
   (s) => {
     slotTitle.value = s?.title ?? "";
+    if (s) {
+      seriesRecurrence.value = recurrenceToDraft(s.recurrence);
+      seriesDuration.value = s.durationMin;
+    }
   },
   { immediate: true },
 );
@@ -87,10 +97,32 @@ function toggleFlag(flag: IssueFlag): void {
   void store.patchOccurrence(occ.value.id, { issueFlags: [...next] });
 }
 
-function saveSlotTitle(): void {
+function clampDuration(minutes: number): number {
+  return Math.min(Math.max(Math.round(minutes || 0), 15), 1440);
+}
+
+/** True once the series title, recurrence or duration diverges from the slot. */
+const seriesDirty = computed(() => {
   const s = slot.value;
-  if (!s || slotTitle.value.trim() === (s.title ?? "")) return;
-  void store.updateSlot(s.id, { title: slotTitle.value.trim() || null });
+  const rule = draftToRecurrence(seriesRecurrence.value);
+  if (!s || !rule) return false;
+  return (
+    (slotTitle.value.trim() || null) !== (s.title ?? null) ||
+    clampDuration(seriesDuration.value) !== s.durationMin ||
+    JSON.stringify(rule) !== JSON.stringify(s.recurrence)
+  );
+});
+
+/** Apply the series edits in one write (re-materializes the whole series). */
+async function saveSeries(): Promise<void> {
+  const s = slot.value;
+  const rule = draftToRecurrence(seriesRecurrence.value);
+  if (!s || !rule || !seriesDirty.value) return;
+  await store.updateSlot(s.id, {
+    title: slotTitle.value.trim() || null,
+    recurrence: rule,
+    durationMin: clampDuration(seriesDuration.value),
+  });
 }
 
 async function removeSlot(): Promise<void> {
@@ -138,72 +170,89 @@ onUnmounted(() => {
       <span v-if="occ.moved" title="Moved from its series time">↷ moved</span>
     </p>
 
-    <div class="os-row">
-      <label class="os-field">
-        start
-        <input v-model="startTime" type="time" step="900" :disabled="locked" @change="applyTime" />
-      </label>
-      <label class="os-field">
-        duration (min)
-        <input
-          v-model.number="durationMin"
-          type="number"
-          min="15"
-          max="1440"
-          step="15"
-          :disabled="locked"
-          @change="applyTime"
-        />
-      </label>
-    </div>
-
-    <div class="os-row os-row--nowrap">
+    <!-- Both states on one line — negotiation pill + content pill (M1 UX note). -->
+    <div class="os-row qe-status">
       <span class="state-chip" :style="{ borderColor: `var(--state-${occ.negotiationState})` }">
         {{ occ.negotiationState }}
       </span>
-      <template v-if="transitions.length > 0">
-        <span class="os-hint">→</span>
-        <button
-          v-for="target in transitions"
-          :key="target"
-          type="button"
-          class="os-chip"
-          :style="{ borderColor: `var(--state-${target})`, color: `var(--state-${target})` }"
-          @click="transition(target)"
-        >
-          {{ target }}
-        </button>
-      </template>
+      <span class="state-chip" :style="{ borderColor: `var(--content-${occ.contentState})` }">
+        {{ occ.contentState
+        }}<template v-if="occ.contentDurationMin !== null"> · {{ occ.contentDurationMin }} min</template>
+      </span>
     </div>
-
-    <div class="os-row">
+    <div v-if="transitions.length > 0 && !locked" class="os-row os-row--nowrap">
+      <span class="os-hint">change →</span>
       <button
-        v-for="flag in ISSUE_FLAGS"
-        :key="flag"
+        v-for="target in transitions"
+        :key="target"
         type="button"
-        class="os-chip flag-chip"
-        :class="{ active: occ.issueFlags.includes(flag) }"
-        @click="toggleFlag(flag)"
+        class="os-chip"
+        :style="{ borderColor: `var(--state-${target})`, color: `var(--state-${target})` }"
+        @click="transition(target)"
       >
-        ⚑{{ ISSUE_FLAG_LETTERS[flag] }} {{ flag }}
+        {{ target }}
       </button>
     </div>
 
-    <p v-if="occ.contentDurationMin !== null" class="qe-content os-hint">
-      content: {{ occ.contentDurationMin }} min ({{ occ.contentState }})
-    </p>
-    <p v-else class="qe-content os-hint">content: {{ occ.contentState }}</p>
+    <section class="qe-block">
+      <p class="qe-block-head">this occurrence</p>
+      <div class="os-row">
+        <label class="os-field">
+          start
+          <input v-model="startTime" type="time" step="900" :disabled="locked" @change="applyTime" />
+        </label>
+        <label class="os-field">
+          duration (min)
+          <input
+            v-model.number="durationMin"
+            type="number"
+            min="15"
+            max="1440"
+            step="15"
+            :disabled="locked"
+            @change="applyTime"
+          />
+        </label>
+      </div>
+      <div class="os-row">
+        <button
+          v-for="flag in ISSUE_FLAGS"
+          :key="flag"
+          type="button"
+          class="os-chip flag-chip"
+          :class="{ active: occ.issueFlags.includes(flag) }"
+          @click="toggleFlag(flag)"
+        >
+          ⚑{{ ISSUE_FLAG_LETTERS[flag] }} {{ flag }}
+        </button>
+      </div>
+    </section>
 
-    <div v-if="slot" class="qe-series">
-      <p class="qe-series-head">series →</p>
-      <label class="os-field qe-series-title">
+    <section v-if="slot" class="qe-block">
+      <p class="qe-block-head">whole series</p>
+      <label class="os-field">
         title
-        <input v-model="slotTitle" type="text" :placeholder="slot.showName ?? 'series title'" @change="saveSlotTitle" />
+        <input v-model="slotTitle" type="text" :placeholder="slot.showName ?? 'series title'" />
       </label>
-      <button type="button" class="os-btn os-btn--danger" @click="removeSlot">
-        delete slot (deletes every occurrence)
-      </button>
-    </div>
+      <RecurrenceFields v-model="seriesRecurrence" :default-day-iso="dayIso" />
+      <label class="os-field">
+        duration (min)
+        <input v-model.number="seriesDuration" type="number" min="15" max="1440" step="15" />
+      </label>
+      <div class="qe-series-actions">
+        <button
+          type="button"
+          class="os-btn os-btn--primary"
+          :disabled="!seriesDirty"
+          @click="saveSeries"
+        >
+          save series
+        </button>
+        <button type="button" class="os-btn os-btn--danger" @click="removeSlot">
+          delete
+        </button>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -216,14 +265,17 @@ onUnmounted(() => {
   left: var(--qe-x);
   z-index: 60;
   width: 20.5rem;
+  /* A slot's series editor can make the popover tall — let it scroll in place. */
+  max-height: min(80vh, 40rem);
+  overflow-y: auto;
 }
 
 .qe-glyph { font-family: var(--font-mono); }
 .qe-title { flex: 1; overflow-wrap: anywhere; }
 .qe-when { margin: 0; color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
-.qe-content { margin: 0; }
 
-/* The current negotiation state: a read-only pill, border colored inline. */
+/* Read-only state pills: negotiation and content, both border-colored inline. */
+.qe-status { align-items: center; }
 .state-chip {
   padding: 1px var(--space-2);
   border: 2px solid var(--color-border);
@@ -240,13 +292,14 @@ onUnmounted(() => {
   color: var(--flag-warning);
 }
 
-.qe-series {
+/* Grouped edits ("this occurrence" / "whole series"), each under a quiet label. */
+.qe-block {
   display: grid;
   gap: var(--space-2);
   padding-top: var(--space-2);
   border-top: 1px solid var(--color-border);
 }
-.qe-series-head {
+.qe-block-head {
   margin: 0;
   color: var(--color-text-muted);
   font-size: var(--text-xs);
@@ -254,8 +307,11 @@ onUnmounted(() => {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.qe-series-title input { width: 100%; }
-.qe-series > .os-btn { justify-self: start; }
+.qe-series-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
 
 @media (max-width: 720px) {
   .quick-edit {
