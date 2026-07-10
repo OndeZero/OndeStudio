@@ -3,6 +3,7 @@ import {
   type SelfLoginInput,
   type SelfProfile,
   SelfProfileSchema,
+  type SelfProposeInput,
   SelfSlotsResponseSchema,
   type Slot,
 } from "@ondestudio/shared";
@@ -122,6 +123,32 @@ export const useSelfStore = defineStore("self", () => {
     }
   }
 
+  /**
+   * Propose a live slot. The server decides the birth state from the session
+   * (team auto-validated, external a hold for the team). On success the slots
+   * list refreshes so the new proposal appears.
+   */
+  async function propose(input: SelfProposeInput): Promise<boolean> {
+    error.value = null;
+    try {
+      const res = await fetch(`${API_BASE}/self/slots/propose`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify(input),
+      });
+      if (!res.ok) {
+        error.value = await readErrorMessage(res, "Could not propose that time.");
+        return false;
+      }
+      await loadSlots();
+      return true;
+    } catch {
+      error.value = "Could not reach the server. Please try again.";
+      return false;
+    }
+  }
+
   /** End the guest session. Clearing locally is always right, so ignore errors. */
   async function logout(): Promise<void> {
     try {
@@ -135,5 +162,17 @@ export const useSelfStore = defineStore("self", () => {
     error.value = null;
   }
 
-  return { profile, slots, zone, checked, loading, error, probe, login, loadSlots, logout };
+  return {
+    profile,
+    slots,
+    zone,
+    checked,
+    loading,
+    error,
+    probe,
+    login,
+    loadSlots,
+    propose,
+    logout,
+  };
 });

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Slot } from "@ondestudio/shared";
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useSelfStore } from "./self-store";
 
 /**
@@ -47,6 +47,47 @@ function describeRecurrence(slot: Slot): string {
 /** The label shown for a slot: its own title, else the show, else the kind. */
 function slotLabel(slot: Slot): string {
   return slot.title ?? slot.showName ?? slot.kind;
+}
+
+// Propose a (weekly) live slot. Kept deliberately simple for a phone: pick
+// day(s), a start time and a length; one-off proposals can come later.
+const proposeTitle = ref("");
+const proposeDays = ref<number[]>([]);
+const proposeTime = ref("20:00");
+const proposeDuration = ref(120);
+const proposing = ref(false);
+const proposeDone = ref(false);
+
+function toggleDay(weekday: number): void {
+  proposeDays.value = proposeDays.value.includes(weekday)
+    ? proposeDays.value.filter((d) => d !== weekday)
+    : [...proposeDays.value, weekday].sort((a, b) => a - b);
+}
+
+const canPropose = computed(
+  () =>
+    !proposing.value &&
+    proposeDays.value.length > 0 &&
+    /^\d{2}:\d{2}$/.test(proposeTime.value) &&
+    proposeDuration.value >= 5 &&
+    proposeDuration.value <= 1440,
+);
+
+async function onPropose(): Promise<void> {
+  if (!canPropose.value) return;
+  proposing.value = true;
+  proposeDone.value = false;
+  const ok = await store.propose({
+    ...(proposeTitle.value.trim() ? { title: proposeTitle.value.trim() } : {}),
+    recurrence: { type: "weekly", weekdays: [...proposeDays.value], time: proposeTime.value },
+    durationMin: Math.round(proposeDuration.value),
+  });
+  proposing.value = false;
+  if (ok) {
+    proposeDone.value = true;
+    proposeTitle.value = "";
+    proposeDays.value = [];
+  }
 }
 </script>
 
@@ -116,6 +157,55 @@ function slotLabel(slot: Slot): string {
           </li>
         </ul>
         <p v-if="store.zone" class="os-hint self-zone">Times shown in {{ store.zone }}.</p>
+      </section>
+
+      <section class="os-surface self-propose">
+        <h2 class="self-slots-title">propose a live slot</h2>
+        <label class="os-field">
+          title <span class="os-hint">(optional)</span>
+          <input v-model="proposeTitle" type="text" placeholder="e.g. My live set" />
+        </label>
+        <div class="self-days" role="group" aria-label="Weekdays">
+          <button
+            v-for="(label, index) in WEEKDAY_LABELS"
+            :key="label"
+            type="button"
+            class="self-day"
+            :class="{ active: proposeDays.includes(index + 1) }"
+            :aria-pressed="proposeDays.includes(index + 1)"
+            @click="toggleDay(index + 1)"
+          >
+            {{ label }}
+          </button>
+        </div>
+        <div class="self-propose-row">
+          <label class="os-field">
+            start
+            <input v-model="proposeTime" type="time" step="900" />
+          </label>
+          <label class="os-field">
+            duration (min)
+            <input v-model.number="proposeDuration" type="number" min="5" max="1440" step="15" />
+          </label>
+        </div>
+        <p v-if="proposeDone" class="self-propose-ok os-hint">
+          {{
+            store.profile.kind === "external"
+              ? "Sent — the team will review and confirm it."
+              : "Added to your grid."
+          }}
+        </p>
+        <button
+          type="button"
+          class="os-btn os-btn--primary self-submit"
+          :disabled="!canPropose"
+          @click="onPropose"
+        >
+          {{ proposing ? "Proposing…" : "Propose slot" }}
+        </button>
+        <p v-if="store.profile.kind === 'external'" class="os-hint">
+          External proposals appear on the team's grid as a hold until they validate them.
+        </p>
       </section>
 
       <button type="button" class="os-btn os-btn--ghost self-logout" @click="store.logout()">
@@ -233,6 +323,41 @@ function slotLabel(slot: Slot): string {
 }
 .self-zone {
   margin: 0;
+}
+
+.self-propose {
+  display: grid;
+  gap: var(--space-2);
+}
+.self-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.self-day {
+  min-width: 2.6rem;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.self-day.active {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.self-propose-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.self-propose-ok {
+  margin: 0;
+  color: var(--color-accent);
 }
 
 .self-logout {

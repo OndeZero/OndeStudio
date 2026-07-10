@@ -309,6 +309,19 @@ export function buildServer(config: AppConfig = loadConfig()) {
           .map((record) => slotToContract(record, config.mainStation.value)),
       };
     },
+    propose: async (broadcasterId, kind, input) => {
+      const created = await schedulingService.createSlot(config.mainStation, {
+        kind: "live",
+        broadcasterId,
+        recurrence: input.recurrence,
+        durationMin: input.durationMin,
+        // Team accounts self-validate; external proposals wait for the team.
+        bornValidated: kind === "team",
+        ...(input.title ? { title: input.title } : {}),
+      });
+      if (!created.ok) return created;
+      return ok(slotToContract(created.value, config.mainStation.value));
+    },
   };
 
   // Live-slot projection (PD §5.10): a validated live slot's weekly times drive

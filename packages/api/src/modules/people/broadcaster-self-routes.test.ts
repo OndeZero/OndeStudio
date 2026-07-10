@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { SelfProfileSchema, SelfSlotsResponseSchema } from "@ondestudio/shared";
+import { SelfProfileSchema, SelfSlotsResponseSchema, SlotSchema } from "@ondestudio/shared";
 import { systemClock } from "../../kernel/clock";
+import { ok } from "../../kernel/result";
 import { createAuthMiddleware } from "../../platform/auth";
 import { createDb } from "../../platform/db";
 import { createApiApp } from "../../platform/http";
@@ -16,8 +17,25 @@ import { createBroadcasterSelfRoutes, type SelfSlotsProvider } from "./broadcast
  */
 const SECRET = "test-secret-test-secret-test-secret!";
 
+let lastPropose: { broadcasterId: number; kind: string } | null = null;
 const slots: SelfSlotsProvider = {
   slotsFor: async () => ({ station: "oz", zone: "Europe/Paris", slots: [] }),
+  propose: async (broadcasterId, kind, input) => {
+    lastPropose = { broadcasterId, kind };
+    return ok({
+      id: 1,
+      station: "oz",
+      kind: "live",
+      title: input.title ?? null,
+      showId: null,
+      showName: null,
+      recurrence: input.recurrence,
+      durationMin: input.durationMin,
+      // Mirror the real rule under test: team self-validates, external waits.
+      negotiationDefault: kind === "team" ? "validated" : "prebooked",
+      broadcasterId,
+    });
+  },
 };
 
 async function buildApp() {
@@ -98,6 +116,34 @@ describe("self-service over HTTP (PD §5.6)", () => {
       jsonPost({ username: "dj-nova", password: "nope" }),
     );
     expect(res.status).toBe(422);
+  });
+
+  test("propose creates a live slot bound to the broadcaster; external → prebooked", async () => {
+    const res = await app.request("/self/slots/propose", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        title: "My live",
+        recurrence: { type: "weekly", weekdays: [5], time: "20:00" },
+        durationMin: 120,
+      }),
+    });
+    expect(res.status).toBe(201);
+    const slot = SlotSchema.parse(await res.json());
+    expect(slot.kind).toBe("live");
+    expect(slot.negotiationDefault).toBe("prebooked"); // dj-nova is external
+    expect(lastPropose).toMatchObject({ kind: "external" });
+
+    // An anonymous proposal is rejected by the self-service guard.
+    const anon = await app.request("/self/slots/propose", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        recurrence: { type: "weekly", weekdays: [1], time: "10:00" },
+        durationMin: 60,
+      }),
+    });
+    expect(anon.status).toBe(401);
   });
 
   test("logout clears the session", async () => {

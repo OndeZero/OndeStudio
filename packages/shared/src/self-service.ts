@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SlotSchema } from "./scheduling";
+import { RecurrenceSchema, SlotSchema } from "./scheduling";
 import { StationSlugSchema } from "./station";
 
 /**
@@ -28,3 +28,15 @@ export const SelfSlotsResponseSchema = z.object({
   slots: z.array(SlotSchema),
 });
 export type SelfSlotsResponse = z.infer<typeof SelfSlotsResponseSchema>;
+
+/**
+ * A broadcaster proposing a live slot (PD §5.6). External proposals land as a
+ * team-validated hold (`prebooked`); a team account's are auto-validated. The
+ * server decides that from the session — the input never carries a state.
+ */
+export const SelfProposeInputSchema = z.object({
+  title: z.string().min(1).max(120).optional(),
+  recurrence: RecurrenceSchema,
+  durationMin: z.number().int().min(5).max(1440),
+});
+export type SelfProposeInput = z.infer<typeof SelfProposeInputSchema>;

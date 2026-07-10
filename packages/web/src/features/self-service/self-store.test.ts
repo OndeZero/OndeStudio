@@ -152,3 +152,33 @@ describe("self-store logout", () => {
     expect(store.zone).toBe("");
   });
 });
+
+describe("self-store propose", () => {
+  const proposal = {
+    recurrence: { type: "weekly" as const, weekdays: [5], time: "20:00" },
+    durationMin: 120,
+  };
+
+  it("posts the proposal and reloads slots on success", async () => {
+    stubRoutes({
+      [`POST ${BASE}/self/slots/propose`]: () =>
+        jsonResponse(slotFixture({ kind: "live", negotiationDefault: "prebooked" }), 201),
+      [`GET ${BASE}/self/slots`]: () => jsonResponse(SLOTS),
+    });
+    const store = useSelfStore();
+    const ok = await store.propose(proposal);
+    expect(ok).toBe(true);
+    expect(store.slots).toHaveLength(1); // reloaded after the proposal
+    expect(store.error).toBeNull();
+  });
+
+  it("surfaces the error and returns false on failure", async () => {
+    stubRoutes({
+      [`POST ${BASE}/self/slots/propose`]: () => jsonResponse({ error: "invalid time" }, 422),
+    });
+    const store = useSelfStore();
+    const ok = await store.propose(proposal);
+    expect(ok).toBe(false);
+    expect(store.error).toBe("invalid time");
+  });
+});
