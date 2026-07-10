@@ -322,6 +322,16 @@ export function buildServer(config: AppConfig = loadConfig()) {
       if (!created.ok) return created;
       return ok(slotToContract(created.value, config.mainStation.value));
     },
+    updateMeta: async (broadcasterId, slotId, meta) => {
+      const updated = await schedulingService.setBroadcasterSlotMeta(
+        config.mainStation,
+        slotId,
+        broadcasterId,
+        meta,
+      );
+      if (!updated.ok) return updated;
+      return ok(slotToContract(updated.value, config.mainStation.value));
+    },
   };
 
   // Live-slot projection (PD §5.10): a validated live slot's weekly times drive

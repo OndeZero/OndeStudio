@@ -36,6 +36,7 @@ function slotFixture(overrides: Partial<Slot> = {}): Slot {
     durationMin: 60,
     negotiationDefault: "validated",
     broadcasterId: 7,
+    meta: null,
     ...overrides,
   };
 }
@@ -180,5 +181,28 @@ describe("self-store propose", () => {
     const ok = await store.propose(proposal);
     expect(ok).toBe(false);
     expect(store.error).toBe("invalid time");
+  });
+});
+
+describe("self-store updateMeta", () => {
+  it("puts the meta and refreshes slots on success", async () => {
+    stubRoutes({
+      [`PUT ${BASE}/self/slots/1/meta`]: () => jsonResponse(slotFixture({ meta: "Live tonight" })),
+      [`GET ${BASE}/self/slots`]: () => jsonResponse(SLOTS),
+    });
+    const store = useSelfStore();
+    const ok = await store.updateMeta(1, "Live tonight");
+    expect(ok).toBe(true);
+    expect(store.error).toBeNull();
+  });
+
+  it("surfaces the error and returns false on failure", async () => {
+    stubRoutes({
+      [`PUT ${BASE}/self/slots/1/meta`]: () => jsonResponse({ error: "not your slot" }, 404),
+    });
+    const store = useSelfStore();
+    const ok = await store.updateMeta(1, "x");
+    expect(ok).toBe(false);
+    expect(store.error).toBe("not your slot");
   });
 });

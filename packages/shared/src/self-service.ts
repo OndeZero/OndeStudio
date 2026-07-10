@@ -40,3 +40,9 @@ export const SelfProposeInputSchema = z.object({
   durationMin: z.number().int().min(5).max(1440),
 });
 export type SelfProposeInput = z.infer<typeof SelfProposeInputSchema>;
+
+/** Set (or clear) a slot's now-playing metadata (PD §5.6). */
+export const SelfMetaInputSchema = z.object({
+  meta: z.string().max(280).nullable(),
+});
+export type SelfMetaInput = z.infer<typeof SelfMetaInputSchema>;

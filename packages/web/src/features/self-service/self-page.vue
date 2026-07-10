@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Slot } from "@ondestudio/shared";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useSelfStore } from "./self-store";
 
 /**
@@ -47,6 +47,28 @@ function describeRecurrence(slot: Slot): string {
 /** The label shown for a slot: its own title, else the show, else the kind. */
 function slotLabel(slot: Slot): string {
   return slot.title ?? slot.showName ?? slot.kind;
+}
+
+// Per-slot now-playing metadata drafts (PD §5.6). Seed each slot's field once
+// from the server; after a save the value already matches, so the button
+// disables itself again without clobbering another slot's in-progress edit.
+const metaDrafts = ref<Record<number, string>>({});
+watch(
+  () => store.slots,
+  (slots) => {
+    for (const slot of slots) {
+      if (!(slot.id in metaDrafts.value)) metaDrafts.value[slot.id] = slot.meta ?? "";
+    }
+  },
+  { immediate: true },
+);
+
+function metaChanged(slot: Slot): boolean {
+  return (metaDrafts.value[slot.id] ?? "") !== (slot.meta ?? "");
+}
+async function saveMeta(slot: Slot): Promise<void> {
+  const value = (metaDrafts.value[slot.id] ?? "").trim();
+  await store.updateMeta(slot.id, value || null);
 }
 
 // Propose a (weekly) live slot. Kept deliberately simple for a phone: pick
@@ -154,6 +176,25 @@ async function onPropose(): Promise<void> {
           <li v-for="slot in store.slots" :key="slot.id" class="os-surface self-slot">
             <span class="self-slot-label">{{ slotLabel(slot) }}</span>
             <span class="os-hint self-slot-when">{{ describeRecurrence(slot) }}</span>
+            <div class="self-meta-row">
+              <label class="os-field self-meta-field">
+                now-playing
+                <input
+                  v-model="metaDrafts[slot.id]"
+                  type="text"
+                  maxlength="280"
+                  placeholder="what's on, or coming up"
+                />
+              </label>
+              <button
+                type="button"
+                class="os-btn os-btn--ghost self-meta-save"
+                :disabled="!metaChanged(slot)"
+                @click="saveMeta(slot)"
+              >
+                save
+              </button>
+            </div>
           </li>
         </ul>
         <p v-if="store.zone" class="os-hint self-zone">Times shown in {{ store.zone }}.</p>
@@ -320,6 +361,20 @@ async function onPropose(): Promise<void> {
 }
 .self-slot-when {
   font-family: var(--font-mono);
+}
+.self-meta-row {
+  display: flex;
+  align-items: end;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+.self-meta-field {
+  flex: 1;
+  min-width: 0;
+}
+.self-meta-save {
+  flex: none;
+  font-size: var(--text-xs);
 }
 .self-zone {
   margin: 0;

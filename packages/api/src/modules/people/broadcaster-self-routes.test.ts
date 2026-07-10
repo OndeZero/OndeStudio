@@ -18,6 +18,7 @@ import { createBroadcasterSelfRoutes, type SelfSlotsProvider } from "./broadcast
 const SECRET = "test-secret-test-secret-test-secret!";
 
 let lastPropose: { broadcasterId: number; kind: string } | null = null;
+let lastMeta: { broadcasterId: number; slotId: number; meta: string | null } | null = null;
 const slots: SelfSlotsProvider = {
   slotsFor: async () => ({ station: "oz", zone: "Europe/Paris", slots: [] }),
   propose: async (broadcasterId, kind, input) => {
@@ -34,6 +35,23 @@ const slots: SelfSlotsProvider = {
       // Mirror the real rule under test: team self-validates, external waits.
       negotiationDefault: kind === "team" ? "validated" : "prebooked",
       broadcasterId,
+      meta: null,
+    });
+  },
+  updateMeta: async (broadcasterId, slotId, meta) => {
+    lastMeta = { broadcasterId, slotId, meta };
+    return ok({
+      id: slotId,
+      station: "oz",
+      kind: "live",
+      title: "Live",
+      showId: null,
+      showName: null,
+      recurrence: { type: "weekly", weekdays: [5], time: "20:00" },
+      durationMin: 120,
+      negotiationDefault: "validated",
+      broadcasterId,
+      meta,
     });
   },
 };
@@ -142,6 +160,29 @@ describe("self-service over HTTP (PD §5.6)", () => {
         recurrence: { type: "weekly", weekdays: [1], time: "10:00" },
         durationMin: 60,
       }),
+    });
+    expect(anon.status).toBe(401);
+  });
+
+  test("meta update passes the id + body through the guarded route", async () => {
+    const res = await app.request("/self/slots/42/meta", {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ meta: "Tonight: deep cuts" }),
+    });
+    expect(res.status).toBe(200);
+    expect(SlotSchema.parse(await res.json()).meta).toBe("Tonight: deep cuts");
+    expect(lastMeta).toEqual({
+      broadcasterId: expect.any(Number),
+      slotId: 42,
+      meta: "Tonight: deep cuts",
+    });
+
+    // Guarded — no cookie, no meta write.
+    const anon = await app.request("/self/slots/42/meta", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ meta: "nope" }),
     });
     expect(anon.status).toBe(401);
   });

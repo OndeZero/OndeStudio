@@ -1,7 +1,8 @@
-import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import {
   ApiErrorSchema,
   SelfLoginInputSchema,
+  SelfMetaInputSchema,
   SelfProfileSchema,
   type SelfProposeInput,
   SelfProposeInputSchema,
@@ -36,6 +37,12 @@ export interface SelfSlotsProvider {
     broadcasterId: number,
     kind: "team" | "external",
     input: SelfProposeInput,
+  ): Promise<Result<unknown, DomainError>>;
+  /** Provision a slot's now-playing metadata; only the owning broadcaster may. */
+  updateMeta(
+    broadcasterId: number,
+    slotId: number,
+    meta: string | null,
   ): Promise<Result<unknown, DomainError>>;
 }
 
@@ -97,6 +104,22 @@ const proposeRoute = createRoute({
   },
 });
 
+const metaRoute = createRoute({
+  method: "put",
+  path: "/self/slots/{id}/meta",
+  tags: ["self-service"],
+  summary: "Provision a slot's now-playing metadata (PD §5.6)",
+  request: {
+    params: z.object({ id: z.coerce.number().int().positive() }),
+    body: { content: { "application/json": { schema: SelfMetaInputSchema } } },
+  },
+  responses: {
+    200: { description: "Updated slot", content: slotContent },
+    401: { description: "Not signed in", content: errorContent },
+    404: { description: "Not your slot", content: errorContent },
+  },
+});
+
 export function createBroadcasterSelfRoutes(
   auth: BroadcasterAuthService,
   cookieSecret: string,
@@ -113,6 +136,7 @@ export function createBroadcasterSelfRoutes(
   routes.use("/self/me", guard);
   routes.use("/self/slots", guard);
   routes.use("/self/slots/propose", guard);
+  routes.use("/self/slots/:id/meta", guard);
 
   const setCookie = async (c: Context, sessionId: string, maxAgeSec: number): Promise<void> => {
     await setSignedCookie(c, BROADCASTER_SESSION_COOKIE, sessionId, cookieSecret, {
@@ -151,6 +175,14 @@ export function createBroadcasterSelfRoutes(
     const proposed = await slots.propose(broadcaster.id, broadcaster.kind, c.req.valid("json"));
     if (!proposed.ok) return respondDomainError(c, proposed.error) as never;
     return c.json(proposed.value as never, 201);
+  });
+
+  routes.openapi(metaRoute, async (c) => {
+    const broadcaster = c.get("broadcaster");
+    const { id } = c.req.valid("param");
+    const updated = await slots.updateMeta(broadcaster.id, id, c.req.valid("json").meta);
+    if (!updated.ok) return respondDomainError(c, updated.error) as never;
+    return c.json(updated.value as never, 200);
   });
 
   return routes;

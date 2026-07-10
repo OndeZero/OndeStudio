@@ -47,6 +47,7 @@ export interface SchedulingRepo {
       rule?: RecurrenceRule;
       durationMin?: number;
       negotiationDefault?: NegotiationState;
+      meta?: string | null;
     },
   ): Promise<void>;
   deleteSlot(id: number): Promise<void>;
@@ -111,6 +112,7 @@ export class DrizzleSchedulingRepo implements SchedulingRepo {
         durationMin: props.durationMin,
         negotiationDefault: props.negotiationDefault,
         broadcasterId: props.broadcasterId,
+        meta: props.meta,
         createdAt: now,
         updatedAt: now,
       })
@@ -130,6 +132,7 @@ export class DrizzleSchedulingRepo implements SchedulingRepo {
       durationMin?: number;
       negotiationDefault?: NegotiationState;
       broadcasterId?: number | null;
+      meta?: string | null;
     },
   ): Promise<void> {
     const set: Record<string, unknown> = { updatedAt: new Date().toISOString() };
@@ -137,6 +140,7 @@ export class DrizzleSchedulingRepo implements SchedulingRepo {
     if (fields.durationMin !== undefined) set.durationMin = fields.durationMin;
     if (fields.negotiationDefault !== undefined) set.negotiationDefault = fields.negotiationDefault;
     if (fields.broadcasterId !== undefined) set.broadcasterId = fields.broadcasterId;
+    if (fields.meta !== undefined) set.meta = fields.meta;
     if (fields.rule !== undefined) {
       const db = fields.rule.toDb();
       set.rrule = db.rrule;
@@ -364,6 +368,7 @@ function toSlotRecord(row: SlotRow, showName: string | null): SlotRecord {
       durationMin: row.durationMin,
       negotiationDefault: row.negotiationDefault as NegotiationState,
       broadcasterId: row.broadcasterId,
+      meta: row.meta,
     }),
     showName,
   };

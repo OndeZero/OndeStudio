@@ -51,6 +51,7 @@ export function slotToContract(record: SlotRecord, station: string): SlotDto {
     durationMin: slot.durationMin,
     negotiationDefault: slot.negotiationDefault,
     broadcasterId: slot.broadcasterId,
+    meta: slot.meta,
   };
 }
 

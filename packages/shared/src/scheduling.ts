@@ -45,6 +45,8 @@ export const SlotSchema = z.object({
   negotiationDefault: NegotiationStateSchema,
   /** The broadcaster who goes live here (PD §5.10); live slots only, else null. */
   broadcasterId: z.number().int().nullable(),
+  /** Now-playing metadata the broadcaster provisions for this slot (PD §5.6); null if unset. */
+  meta: z.string().nullable(),
 });
 export type Slot = z.infer<typeof SlotSchema>;
 

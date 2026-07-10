@@ -1,0 +1,1 @@
+ALTER TABLE `slot` ADD `meta` text;

@@ -93,6 +93,33 @@ export class SchedulingService {
     return byBroadcaster;
   }
 
+  /**
+   * Self-service (PD §5.6): a broadcaster provisions the now-playing metadata of
+   * a slot it owns. Ownership is enforced here — the slot must be on this station
+   * and bound to that broadcaster, else it reads as not-found (never leak another
+   * broadcaster's slot).
+   */
+  async setBroadcasterSlotMeta(
+    station: StationId,
+    slotId: number,
+    broadcasterId: number,
+    meta: string | null,
+  ): Promise<Result<SlotRecord, DomainError>> {
+    const record = await this.deps.repo.getSlot(slotId);
+    if (
+      !record ||
+      record.slot.stationId !== station.value ||
+      record.slot.broadcasterId !== broadcasterId
+    ) {
+      return err(DomainError.notFound("slot"));
+    }
+    await this.deps.repo.updateSlotFields(slotId, { meta });
+    this.changed(station, "slot-updated");
+    const updated = await this.deps.repo.getSlot(slotId);
+    if (!updated) return err(DomainError.notFound("slot"));
+    return ok(updated);
+  }
+
   async listOccurrences(
     station: StationId,
     fromUtc: Date,

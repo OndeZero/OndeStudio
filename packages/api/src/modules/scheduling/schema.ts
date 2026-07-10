@@ -47,6 +47,8 @@ export const slots = sqliteTable("slot", {
     .default("prebooked"),
   /** The bound live broadcaster (people.broadcaster.id); soft ref — no cross-module FK. */
   broadcasterId: integer("broadcaster_id"),
+  /** Now-playing metadata provisioned for this slot (PD §5.6); NULL until set. */
+  meta: text("meta"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

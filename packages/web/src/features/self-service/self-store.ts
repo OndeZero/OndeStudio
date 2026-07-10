@@ -149,6 +149,28 @@ export const useSelfStore = defineStore("self", () => {
     }
   }
 
+  /** Provision (or clear) a slot's now-playing metadata, then refresh the list. */
+  async function updateMeta(slotId: number, meta: string | null): Promise<boolean> {
+    error.value = null;
+    try {
+      const res = await fetch(`${API_BASE}/self/slots/${slotId}/meta`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ meta }),
+      });
+      if (!res.ok) {
+        error.value = await readErrorMessage(res, "Could not save the metadata.");
+        return false;
+      }
+      await loadSlots();
+      return true;
+    } catch {
+      error.value = "Could not reach the server. Please try again.";
+      return false;
+    }
+  }
+
   /** End the guest session. Clearing locally is always right, so ignore errors. */
   async function logout(): Promise<void> {
     try {
@@ -173,6 +195,7 @@ export const useSelfStore = defineStore("self", () => {
     login,
     loadSlots,
     propose,
+    updateMeta,
     logout,
   };
 });

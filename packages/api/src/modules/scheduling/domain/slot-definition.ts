@@ -15,6 +15,8 @@ export interface SlotProps {
   negotiationDefault: NegotiationState;
   /** The live broadcaster bound to this slot (PD §5.10); live kind only. */
   broadcasterId: number | null;
+  /** Now-playing metadata provisioned for this slot (PD §5.6); null until set. */
+  meta: string | null;
 }
 
 /** A computed series instance, enriched with what the grid needs from its slot. */
@@ -44,7 +46,7 @@ export class SlotDefinition extends Entity<number> {
    * to negotiate (PD §4.4), otherwise it starts as a `prebooked` hold.
    */
   static plan(
-    input: Omit<SlotProps, "id" | "negotiationDefault" | "broadcasterId"> & {
+    input: Omit<SlotProps, "id" | "negotiationDefault" | "broadcasterId" | "meta"> & {
       bornValidated: boolean;
       broadcasterId?: number | null;
     },
@@ -67,6 +69,7 @@ export class SlotDefinition extends Entity<number> {
       negotiationDefault: input.bornValidated ? "validated" : "prebooked",
       // A broadcaster binding only means something on a live slot.
       broadcasterId: input.kind === "live" ? (input.broadcasterId ?? null) : null,
+      meta: null, // provisioned later, never at creation
     });
   }
 
@@ -93,6 +96,9 @@ export class SlotDefinition extends Entity<number> {
   }
   get broadcasterId(): number | null {
     return this.props.broadcasterId;
+  }
+  get meta(): string | null {
+    return this.props.meta;
   }
 
   /** Display label: explicit title, else the bound show's name, else the kind. */
