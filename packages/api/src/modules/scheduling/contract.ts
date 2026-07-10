@@ -34,6 +34,7 @@ export function occurrenceToContract(
     contentState: occurrence.content.effectiveAt(occurrence.endsAtUtc, now),
     issueFlags: [...occurrence.issueFlags],
     contentDurationMin: occurrence.contentDurationMin,
+    broadcasterId: slot.broadcasterId,
   };
 }
 
@@ -49,6 +50,7 @@ export function slotToContract(record: SlotRecord, station: string): SlotDto {
     recurrence: slot.rule.pattern,
     durationMin: slot.durationMin,
     negotiationDefault: slot.negotiationDefault,
+    broadcasterId: slot.broadcasterId,
   };
 }
 

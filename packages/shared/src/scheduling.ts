@@ -43,6 +43,8 @@ export const SlotSchema = z.object({
   recurrence: RecurrenceSchema,
   durationMin: z.number().int().positive(),
   negotiationDefault: NegotiationStateSchema,
+  /** The broadcaster who goes live here (PD §5.10); live slots only, else null. */
+  broadcasterId: z.number().int().nullable(),
 });
 export type Slot = z.infer<typeof SlotSchema>;
 
@@ -71,6 +73,8 @@ export const OccurrenceSchema = z.object({
   contentDurationMin: z.number().int().positive().nullable(),
   /** Title of the episode airing here (PD §4.5); null when the occurrence is empty. */
   episodeTitle: z.string().nullable(),
+  /** The live broadcaster bound to this slot (PD §5.10); null unless a live slot. */
+  broadcasterId: z.number().int().nullable(),
 });
 export type Occurrence = z.infer<typeof OccurrenceSchema>;
 
@@ -116,6 +120,8 @@ export const CreateSlotInputSchema = z.object({
   durationMin: z.number().int().min(5).max(1440),
   /** Slots with nothing to negotiate are born validated (PD §4.4). */
   bornValidated: z.boolean().default(false),
+  /** The live broadcaster to bind (live kind only; ignored otherwise). */
+  broadcasterId: z.number().int().positive().optional(),
 });
 export type CreateSlotInput = z.infer<typeof CreateSlotInputSchema>;
 
@@ -124,6 +130,8 @@ export const UpdateSlotInputSchema = z
     title: z.string().min(1).max(120).nullable(),
     recurrence: RecurrenceSchema,
     durationMin: z.number().int().min(5).max(1440),
+    /** Bind (positive), unbind (null) or leave (omit) the live broadcaster. */
+    broadcasterId: z.number().int().positive().nullable(),
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, { message: "empty update" });

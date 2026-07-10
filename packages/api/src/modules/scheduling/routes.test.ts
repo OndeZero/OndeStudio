@@ -221,3 +221,60 @@ describe("scheduling over HTTP", () => {
     expect(after.occurrences).toHaveLength(0);
   });
 });
+
+describe("live slot ↔ broadcaster binding (PD §5.10)", () => {
+  const { app } = buildApp();
+
+  const liveSlot = (overrides: Record<string, unknown>) => ({
+    kind: "live",
+    recurrence: { type: "weekly", weekdays: [5], time: "20:00" },
+    durationMin: 120,
+    bornValidated: true,
+    ...overrides,
+  });
+
+  test("a live slot persists its broadcaster; a non-live slot ignores it", async () => {
+    const live = await app.request(
+      "/stations/oz/slots",
+      jsonInit("POST", liveSlot({ title: "Studio live", broadcasterId: 7 })),
+    );
+    expect(live.status).toBe(201);
+    expect(SlotSchema.parse(await live.json()).broadcasterId).toBe(7);
+
+    // The binding is live-only — a show slot drops it.
+    const show = await app.request(
+      "/stations/oz/slots",
+      jsonInit("POST", {
+        kind: "show",
+        title: "Not live",
+        broadcasterId: 7,
+        recurrence: { type: "weekly", weekdays: [6], time: "10:00" },
+        durationMin: 60,
+        bornValidated: false,
+      }),
+    );
+    expect(SlotSchema.parse(await show.json()).broadcasterId).toBeNull();
+  });
+
+  test("PUT rebinds and unbinds the broadcaster", async () => {
+    const created = SlotSchema.parse(
+      await (
+        await app.request(
+          "/stations/oz/slots",
+          jsonInit("POST", liveSlot({ title: "Rebind me", broadcasterId: 3, weekdays: [1] })),
+        )
+      ).json(),
+    );
+    const rebind = await app.request(
+      `/stations/oz/slots/${created.id}`,
+      jsonInit("PUT", { broadcasterId: 9 }),
+    );
+    expect(SlotSchema.parse(await rebind.json()).broadcasterId).toBe(9);
+
+    const unbind = await app.request(
+      `/stations/oz/slots/${created.id}`,
+      jsonInit("PUT", { broadcasterId: null }),
+    );
+    expect(SlotSchema.parse(await unbind.json()).broadcasterId).toBeNull();
+  });
+});

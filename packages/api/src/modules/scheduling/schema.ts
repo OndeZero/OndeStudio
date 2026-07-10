@@ -45,6 +45,8 @@ export const slots = sqliteTable("slot", {
   negotiationDefault: text("negotiation_default", { enum: NEGOTIATION_STATES })
     .notNull()
     .default("prebooked"),
+  /** The bound live broadcaster (people.broadcaster.id); soft ref — no cross-module FK. */
+  broadcasterId: integer("broadcaster_id"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });

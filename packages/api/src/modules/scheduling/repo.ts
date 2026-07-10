@@ -110,6 +110,7 @@ export class DrizzleSchedulingRepo implements SchedulingRepo {
         startWall: db.startWall,
         durationMin: props.durationMin,
         negotiationDefault: props.negotiationDefault,
+        broadcasterId: props.broadcasterId,
         createdAt: now,
         updatedAt: now,
       })
@@ -128,12 +129,14 @@ export class DrizzleSchedulingRepo implements SchedulingRepo {
       rule?: RecurrenceRule;
       durationMin?: number;
       negotiationDefault?: NegotiationState;
+      broadcasterId?: number | null;
     },
   ): Promise<void> {
     const set: Record<string, unknown> = { updatedAt: new Date().toISOString() };
     if (fields.title !== undefined) set.title = fields.title;
     if (fields.durationMin !== undefined) set.durationMin = fields.durationMin;
     if (fields.negotiationDefault !== undefined) set.negotiationDefault = fields.negotiationDefault;
+    if (fields.broadcasterId !== undefined) set.broadcasterId = fields.broadcasterId;
     if (fields.rule !== undefined) {
       const db = fields.rule.toDb();
       set.rrule = db.rrule;
@@ -360,6 +363,7 @@ function toSlotRecord(row: SlotRow, showName: string | null): SlotRecord {
       rule: unwrap(RecurrenceRule.fromDb(row.rrule, row.startWall)),
       durationMin: row.durationMin,
       negotiationDefault: row.negotiationDefault as NegotiationState,
+      broadcasterId: row.broadcasterId,
     }),
     showName,
   };

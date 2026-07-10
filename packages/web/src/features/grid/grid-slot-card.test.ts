@@ -29,6 +29,7 @@ function occurrenceFixture(overrides: Partial<Occurrence> = {}): Occurrence {
     issueFlags: [],
     contentDurationMin: 118,
     episodeTitle: null,
+    broadcasterId: null,
     ...overrides,
   };
 }

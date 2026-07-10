@@ -174,6 +174,7 @@ export class SchedulingService {
       rule: rule.value,
       durationMin: input.durationMin,
       bornValidated: input.bornValidated,
+      broadcasterId: input.broadcasterId ?? null,
     });
     if (!planned.ok) return planned;
 
@@ -200,6 +201,10 @@ export class SchedulingService {
       ...(input.title !== undefined ? { title: input.title } : {}),
       ...(input.durationMin !== undefined ? { durationMin: input.durationMin } : {}),
       ...(rule ? { rule } : {}),
+      // A broadcaster binding only sticks on a live slot (ignored otherwise).
+      ...(input.broadcasterId !== undefined
+        ? { broadcasterId: existing.value.slot.kind === "live" ? input.broadcasterId : null }
+        : {}),
     });
     this.changed(station, "slot-updated");
     const updated = await this.deps.repo.getSlot(slotId);

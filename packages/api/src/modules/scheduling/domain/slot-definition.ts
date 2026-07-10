@@ -13,6 +13,8 @@ export interface SlotProps {
   rule: RecurrenceRule;
   durationMin: number;
   negotiationDefault: NegotiationState;
+  /** The live broadcaster bound to this slot (PD §5.10); live kind only. */
+  broadcasterId: number | null;
 }
 
 /** A computed series instance, enriched with what the grid needs from its slot. */
@@ -42,7 +44,10 @@ export class SlotDefinition extends Entity<number> {
    * to negotiate (PD §4.4), otherwise it starts as a `prebooked` hold.
    */
   static plan(
-    input: Omit<SlotProps, "id" | "negotiationDefault"> & { bornValidated: boolean },
+    input: Omit<SlotProps, "id" | "negotiationDefault" | "broadcasterId"> & {
+      bornValidated: boolean;
+      broadcasterId?: number | null;
+    },
   ): Result<Omit<SlotProps, "id">, DomainError> {
     if (
       (input.kind === "show" || input.kind === "series") &&
@@ -60,6 +65,8 @@ export class SlotDefinition extends Entity<number> {
       rule: input.rule,
       durationMin: input.durationMin,
       negotiationDefault: input.bornValidated ? "validated" : "prebooked",
+      // A broadcaster binding only means something on a live slot.
+      broadcasterId: input.kind === "live" ? (input.broadcasterId ?? null) : null,
     });
   }
 
@@ -83,6 +90,9 @@ export class SlotDefinition extends Entity<number> {
   }
   get negotiationDefault(): NegotiationState {
     return this.props.negotiationDefault;
+  }
+  get broadcasterId(): number | null {
+    return this.props.broadcasterId;
   }
 
   /** Display label: explicit title, else the bound show's name, else the kind. */

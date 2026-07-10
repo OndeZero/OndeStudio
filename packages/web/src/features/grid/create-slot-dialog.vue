@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { CreateSlotInput, SlotKind } from "@ondestudio/shared";
 import { SLOT_KINDS } from "@ondestudio/shared";
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { isoWeekdayOf } from "../../lib/station-time";
+import { useBroadcastersStore } from "../broadcasters/broadcasters-store";
 import { useGridStore } from "./grid-store";
 import { SLOT_KIND_GLYPHS } from "./grid-symbols";
 import RecurrenceFields from "./recurrence-fields.vue";
@@ -22,10 +23,16 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>();
 
 const store = useGridStore();
+const broadcasters = useBroadcastersStore();
+onMounted(() => {
+  if (broadcasters.broadcasters.length === 0) void broadcasters.load();
+});
 
 const kind = ref<SlotKind>("show");
 const title = ref("");
 const showName = ref("");
+const broadcasterId = ref<number | null>(null);
+const isLive = computed(() => kind.value === "live");
 const recurrence = ref<RecurrenceDraft>({
   type: "weekly",
   weekdays: [isoWeekdayOf(props.draft.dayIso)],
@@ -58,6 +65,7 @@ async function submit(): Promise<void> {
   };
   if (title.value.trim()) input.title = title.value.trim();
   if (needsShow.value && showName.value.trim()) input.showName = showName.value.trim();
+  if (isLive.value && broadcasterId.value !== null) input.broadcasterId = broadcasterId.value;
   const created = await store.createSlot(input);
   submitting.value = false;
   if (created) emit("close");
@@ -94,6 +102,16 @@ async function submit(): Promise<void> {
       <label class="os-field">
         title <span v-if="needsShow" class="os-hint">(optional — defaults to the show name)</span>
         <input v-model="title" type="text" :placeholder="needsShow ? 'slot label override' : 'e.g. Maigre — studio live'" />
+      </label>
+
+      <label v-if="isLive" class="os-field">
+        broadcaster <span class="os-hint">(who goes live)</span>
+        <select v-model="broadcasterId">
+          <option :value="null">— none —</option>
+          <option v-for="b in broadcasters.broadcasters" :key="b.id" :value="b.id">
+            {{ b.displayName }}
+          </option>
+        </select>
       </label>
 
       <fieldset class="dlg-recurrence">

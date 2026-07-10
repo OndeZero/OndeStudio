@@ -8,6 +8,7 @@ import {
 } from "@ondestudio/shared";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { formatDayLabel, formatHm, isoDayOf } from "../../lib/station-time";
+import { useBroadcastersStore } from "../broadcasters/broadcasters-store";
 import { useGridStore } from "./grid-store";
 import { ISSUE_FLAG_LETTERS, SLOT_KIND_GLYPHS } from "./grid-symbols";
 import RecurrenceFields from "./recurrence-fields.vue";
@@ -26,10 +27,15 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>();
 
 const store = useGridStore();
+const broadcasters = useBroadcastersStore();
+onMounted(() => {
+  if (broadcasters.broadcasters.length === 0) void broadcasters.load();
+});
 const rootEl = ref<HTMLElement | null>(null);
 
 const occ = computed(() => props.occurrence);
 const slot = computed(() => store.slotById.get(occ.value.slotId) ?? null);
+const isLive = computed(() => slot.value?.kind === "live");
 const dayIso = computed(() => isoDayOf(new Date(occ.value.startsAt), store.zone));
 
 const startTime = ref("");
@@ -48,6 +54,7 @@ watch(
 const slotTitle = ref("");
 const seriesRecurrence = ref<RecurrenceDraft>({ type: "weekly", weekdays: [1], time: "00:00" });
 const seriesDuration = ref(0);
+const seriesBroadcasterId = ref<number | null>(null);
 // The series editor stays tucked away — the popover is the 30-second-fix
 // surface first (move/resize/negotiate); editing the whole series is opt-in.
 const seriesOpen = ref(false);
@@ -58,6 +65,7 @@ watch(
     if (s) {
       seriesRecurrence.value = recurrenceToDraft(s.recurrence);
       seriesDuration.value = s.durationMin;
+      seriesBroadcasterId.value = s.broadcasterId;
     }
   },
   { immediate: true },
@@ -104,7 +112,7 @@ function clampDuration(minutes: number): number {
   return Math.min(Math.max(Math.round(minutes || 0), 15), 1440);
 }
 
-/** True once the series title, recurrence or duration diverges from the slot. */
+/** True once the series title, recurrence, duration or broadcaster diverges. */
 const seriesDirty = computed(() => {
   const s = slot.value;
   const rule = draftToRecurrence(seriesRecurrence.value);
@@ -112,7 +120,8 @@ const seriesDirty = computed(() => {
   return (
     (slotTitle.value.trim() || null) !== (s.title ?? null) ||
     clampDuration(seriesDuration.value) !== s.durationMin ||
-    JSON.stringify(rule) !== JSON.stringify(s.recurrence)
+    JSON.stringify(rule) !== JSON.stringify(s.recurrence) ||
+    (isLive.value && seriesBroadcasterId.value !== s.broadcasterId)
   );
 });
 
@@ -125,6 +134,7 @@ async function saveSeries(): Promise<void> {
     title: slotTitle.value.trim() || null,
     recurrence: rule,
     durationMin: clampDuration(seriesDuration.value),
+    ...(isLive.value ? { broadcasterId: seriesBroadcasterId.value } : {}),
   });
 }
 
@@ -255,6 +265,15 @@ onUnmounted(() => {
         <label class="os-field">
           duration (min)
           <input v-model.number="seriesDuration" type="number" min="15" max="1440" step="15" />
+        </label>
+        <label v-if="isLive" class="os-field">
+          broadcaster
+          <select v-model="seriesBroadcasterId">
+            <option :value="null">— none —</option>
+            <option v-for="b in broadcasters.broadcasters" :key="b.id" :value="b.id">
+              {{ b.displayName }}
+            </option>
+          </select>
         </label>
         <div class="qe-series-actions">
           <button
