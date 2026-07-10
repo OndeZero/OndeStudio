@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { Slot } from "@ondestudio/shared";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useSelfStore } from "./self-store";
+import { useWebcaster } from "./webcaster";
 
 /**
  * The external-broadcaster self-service surface (PD §5.6), route /self. A realm
@@ -9,8 +10,8 @@ import { useSelfStore } from "./self-store";
  * hides the team header/nav for /self), and drives its own session store — a
  * lost session shows the login form here, never a redirect to the team /login.
  *
- * This increment: login → profile → own slots → logout. Propose-times, slot
- * meta and the "broadcast from here" mic section are later increments.
+ * Login → profile → own slots (+ now-playing meta) → propose times → "broadcast
+ * from here" (the browser webcaster) → logout.
  */
 const store = useSelfStore();
 
@@ -111,6 +112,25 @@ async function onPropose(): Promise<void> {
     proposeDays.value = [];
   }
 }
+
+// "Broadcast from here" (PD §5.6): the browser webcaster. Shown only when the
+// deployment exposes a WebDJ harbor (profile.webDjUrl) and we still hold the
+// broadcaster's source credentials in memory (a fresh login, not a cookie-only
+// reload). The mic → level-meter → MP3 → WebSocket pipeline lives in the
+// composable; this page is just its controls.
+const wc = useWebcaster();
+const canBroadcast = computed(() => Boolean(store.profile?.webDjUrl && store.credentials));
+
+async function onOpenMic(): Promise<void> {
+  await wc.openMic();
+}
+function onGoLive(): void {
+  const url = store.profile?.webDjUrl;
+  const creds = store.credentials;
+  if (!url || !creds) return;
+  wc.goLive(url, creds.username, creds.password);
+}
+onUnmounted(() => wc.stop());
 </script>
 
 <template>
@@ -246,6 +266,89 @@ async function onPropose(): Promise<void> {
         </button>
         <p v-if="store.profile.kind === 'external'" class="os-hint">
           External proposals appear on the team's grid as a hold until they validate them.
+        </p>
+      </section>
+
+      <!-- Broadcast from here: the browser webcaster (only where a harbor is set). -->
+      <section v-if="canBroadcast" class="os-surface self-cast">
+        <header class="self-cast-head">
+          <h2 class="self-slots-title">broadcast from here</h2>
+          <span
+            class="self-cast-state"
+            :class="`self-cast-state--${wc.state.value}`"
+            :aria-live="'polite'"
+          >
+            {{
+              wc.state.value === "live"
+                ? "● on air"
+                : wc.state.value === "connecting"
+                  ? "connecting…"
+                  : wc.state.value === "ready"
+                    ? "mic ready"
+                    : wc.state.value === "opening"
+                      ? "opening mic…"
+                      : "off air"
+            }}
+          </span>
+        </header>
+
+        <p v-if="wc.error.value" class="self-error" role="alert">{{ wc.error.value }}</p>
+
+        <label v-if="wc.devices.value.length > 0" class="os-field">
+          microphone
+          <select v-model="wc.deviceId.value" :disabled="wc.state.value === 'live'">
+            <option v-for="d in wc.devices.value" :key="d.deviceId" :value="d.deviceId">
+              {{ d.label || "microphone" }}
+            </option>
+          </select>
+        </label>
+
+        <!-- Level meter: a live RMS bar so a broadcaster sees the mic is picking up. -->
+        <div
+          class="self-meter"
+          role="meter"
+          aria-label="microphone level"
+          :aria-valuenow="Math.round(wc.level.value * 100)"
+        >
+          <div class="self-meter-fill" :style="{ width: `${Math.round(wc.level.value * 100)}%` }" />
+        </div>
+
+        <div class="self-cast-actions">
+          <button
+            v-if="wc.state.value === 'idle' || wc.state.value === 'error'"
+            type="button"
+            class="os-btn os-btn--ghost"
+            @click="onOpenMic"
+          >
+            open mic
+          </button>
+          <button
+            v-if="wc.state.value === 'ready'"
+            type="button"
+            class="os-btn os-btn--primary"
+            @click="onGoLive"
+          >
+            go live
+          </button>
+          <button
+            v-if="wc.state.value === 'live' || wc.state.value === 'connecting'"
+            type="button"
+            class="os-btn os-btn--danger"
+            @click="wc.stopStreaming('ready')"
+          >
+            stop broadcast
+          </button>
+          <button
+            v-if="wc.state.value === 'ready'"
+            type="button"
+            class="os-btn os-btn--ghost self-cast-close"
+            @click="wc.stop()"
+          >
+            close mic
+          </button>
+        </div>
+        <p class="os-hint">
+          Streams this device's microphone straight to your stream. Keep this tab open while on air.
         </p>
       </section>
 
@@ -413,6 +516,50 @@ async function onPropose(): Promise<void> {
 .self-propose-ok {
   margin: 0;
   color: var(--color-accent);
+}
+
+.self-cast {
+  display: grid;
+  gap: var(--space-2);
+}
+.self-cast-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.self-cast-state {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+.self-cast-state--live {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+.self-cast-state--ready {
+  color: var(--color-accent);
+}
+.self-meter {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+.self-meter-fill {
+  height: 100%;
+  background: var(--color-accent);
+  /* Short transition so the bar looks live but not jittery. */
+  transition: width 80ms linear;
+}
+.self-cast-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.self-cast-close {
+  font-size: var(--text-xs);
 }
 
 .self-logout {

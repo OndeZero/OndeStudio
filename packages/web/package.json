@@ -11,6 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "@ondestudio/shared": "workspace:*",
     "interactjs": "^1.10.27",
     "pinia": "^3.0.0",

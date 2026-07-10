@@ -22,6 +22,7 @@ const PROFILE: SelfProfile = {
   username: "guest_dj",
   displayName: "Guest DJ",
   kind: "external",
+  webDjUrl: null,
 };
 
 function slotFixture(overrides: Partial<Slot> = {}): Slot {

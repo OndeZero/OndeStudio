@@ -40,6 +40,13 @@ export const useSelfStore = defineStore("self", () => {
   const checked = ref(false);
   const loading = ref(false);
   const error = ref<string | null>(null);
+  /**
+   * The broadcaster's own source credentials, held in memory ONLY for the life
+   * of this tab so the "broadcast from here" webcaster can authenticate to the
+   * WebDJ harbor (PD §5.6). Never persisted, never sent anywhere but the harbor;
+   * a page reload (cookie-only session) leaves this null — they log in to stream.
+   */
+  const credentials = ref<{ username: string; password: string } | null>(null);
 
   /**
    * Startup probe. 200 → we have a session (load the slots too); 401 → simply
@@ -98,6 +105,8 @@ export const useSelfStore = defineStore("self", () => {
         return false;
       }
       profile.value = parsed.data;
+      // Keep the creds in memory for the webcaster (this tab only).
+      credentials.value = { username, password };
       checked.value = true;
       await loadSlots();
       return true;
@@ -182,6 +191,7 @@ export const useSelfStore = defineStore("self", () => {
     slots.value = [];
     zone.value = "";
     error.value = null;
+    credentials.value = null;
   }
 
   return {
@@ -191,6 +201,7 @@ export const useSelfStore = defineStore("self", () => {
     checked,
     loading,
     error,
+    credentials,
     probe,
     login,
     loadSlots,

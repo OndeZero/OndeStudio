@@ -374,7 +374,10 @@ export function buildServer(config: AppConfig = loadConfig()) {
     }),
   );
   api.route("/", createPeopleRoutes(peopleService, cookieSecret));
-  api.route("/", createBroadcasterSelfRoutes(broadcasterAuth, cookieSecret, selfSlots));
+  api.route(
+    "/",
+    createBroadcasterSelfRoutes(broadcasterAuth, cookieSecret, selfSlots, config.webDjUrl),
+  );
   api.route(
     "/",
     createBroadcasterRoutes(

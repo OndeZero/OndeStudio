@@ -29,6 +29,12 @@ const EnvSchema = z.object({
    * only after the per-feature adoption step AND the dedicated API account.
    */
   AZURACAST_WRITE_STATIONS: z.string().default("wz-test"),
+  /**
+   * The AzuraCast WebDJ / liquidsoap harbor WebSocket for browser broadcasting
+   * (PD §5.6) — e.g. `wss://host/radio/<dj_port>/<mount>`. Optional: unset
+   * disables the self-service "broadcast from here" console.
+   */
+  AZURACAST_WEBDJ_URL: z.string().url().optional(),
 });
 
 function isValidTimeZone(zone: string): boolean {
@@ -55,6 +61,8 @@ export interface AppConfig {
   sessionSecret: string | undefined;
   /** Fan-out write targets (docs/2 §7.7) — subset of `stations`. */
   writeStations: StationId[];
+  /** WebDJ harbor WebSocket for the self-service broadcast console (PD §5.6); null = disabled. */
+  webDjUrl: string | null;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AppConfig {
@@ -87,6 +95,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       .map((raw) => raw.trim())
       .filter((raw) => raw.length > 0)
       .map(parseStation),
+    webDjUrl: e.AZURACAST_WEBDJ_URL ?? null,
   };
 }
 

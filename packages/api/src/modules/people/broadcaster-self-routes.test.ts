@@ -80,7 +80,10 @@ async function buildApp() {
   );
   app.get("/health", (c) => c.json({ status: "ok" }));
   app.get("/team-only", (c) => c.json({ ok: true })); // guarded by the team gate
-  app.route("/", createBroadcasterSelfRoutes(auth, SECRET, slots));
+  app.route(
+    "/",
+    createBroadcasterSelfRoutes(auth, SECRET, slots, "wss://studio.example/radio/8015/input"),
+  );
   return app;
 }
 

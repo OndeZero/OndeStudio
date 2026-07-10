@@ -124,6 +124,7 @@ export function createBroadcasterSelfRoutes(
   auth: BroadcasterAuthService,
   cookieSecret: string,
   slots: SelfSlotsProvider,
+  webDjUrl: string | null,
 ): OpenAPIHono {
   const routes = createRouter();
 
@@ -152,7 +153,7 @@ export function createBroadcasterSelfRoutes(
     const result = await auth.login(input.username, input.password);
     if (!result.ok) return respondDomainError(c, result.error) as never;
     await setCookie(c, result.value.sessionId, Math.floor(result.value.ttlMs / 1000));
-    return c.json(result.value.identity, 200);
+    return c.json({ ...result.value.identity, webDjUrl }, 200);
   });
 
   routes.openapi(logoutRoute, async (c) => {
@@ -162,7 +163,7 @@ export function createBroadcasterSelfRoutes(
     return c.body(null, 204);
   });
 
-  routes.openapi(meRoute, (c) => c.json(c.get("broadcaster"), 200));
+  routes.openapi(meRoute, (c) => c.json({ ...c.get("broadcaster"), webDjUrl }, 200));
 
   routes.openapi(slotsRoute, async (c) => {
     const broadcaster = c.get("broadcaster");

@@ -18,6 +18,8 @@ export const SelfProfileSchema = z.object({
   username: z.string(),
   displayName: z.string(),
   kind: z.enum(["team", "external"]),
+  /** WebDJ harbor WebSocket for browser broadcasting (PD §5.6); null = disabled. */
+  webDjUrl: z.string().nullable(),
 });
 export type SelfProfile = z.infer<typeof SelfProfileSchema>;
 
