@@ -62,6 +62,37 @@ export class SchedulingService {
     return this.deps.repo.listSlots(station.value);
   }
 
+  /**
+   * Weekly airtime per broadcaster from validated LIVE slots (PD §5.10) — the
+   * source for live-slot projection onto AzuraCast streamers. Only broadcasters
+   * with at least one weekly live slot appear; one-off live slots don't map onto
+   * a recurring streamer schedule and are skipped.
+   */
+  async liveScheduleItemsByBroadcaster(
+    station: StationId,
+  ): Promise<Map<number, { startTime: number; endTime: number; days: number[] }[]>> {
+    const records = await this.deps.repo.listSlots(station.value);
+    const byBroadcaster = new Map<
+      number,
+      { startTime: number; endTime: number; days: number[] }[]
+    >();
+    for (const { slot } of records) {
+      if (
+        slot.kind !== "live" ||
+        slot.negotiationDefault !== "validated" ||
+        slot.broadcasterId === null
+      ) {
+        continue;
+      }
+      const item = slot.rule.weeklyScheduleItems(slot.durationMin);
+      if (!item) continue;
+      const list = byBroadcaster.get(slot.broadcasterId) ?? [];
+      list.push(item);
+      byBroadcaster.set(slot.broadcasterId, list);
+    }
+    return byBroadcaster;
+  }
+
   async listOccurrences(
     station: StationId,
     fromUtc: Date,

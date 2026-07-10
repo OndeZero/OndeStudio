@@ -10,7 +10,7 @@ import type { Logger } from "../../kernel/logger";
 import { err, ok, type Result } from "../../kernel/result";
 import type { StationId } from "../../kernel/station-id";
 import type { BroadcasterRepo, BroadcasterRow } from "./broadcaster-repo";
-import type { StreamerDef, StreamerDirectoryPort } from "./ports";
+import type { StreamerDef, StreamerDirectoryPort, StreamerScheduleItem } from "./ports";
 
 export interface BroadcasterMutation {
   broadcaster: Broadcaster;
@@ -119,6 +119,37 @@ export class BroadcasterService {
     }
     await this.deps.repo.remove(id);
     return ok(warnings);
+  }
+
+  /**
+   * Live-slot projection (PD §5.10): fill each listed broadcaster's streamer
+   * schedule from the grid's validated live slots. `enforce_schedule` stays the
+   * per-broadcaster setting (defFor) — internal accounts keep their airtime
+   * open, external ones are locked to it. Broadcasters not in the map are left
+   * untouched (no clearing); writes reach only allowed stations (docs/2 §7.7).
+   */
+  async applyLiveSchedules(
+    scheduleByBroadcaster: Map<number, StreamerScheduleItem[]>,
+  ): Promise<void> {
+    for (const [broadcasterId, scheduleItems] of scheduleByBroadcaster) {
+      const row = await this.deps.repo.get(broadcasterId);
+      if (!row) continue;
+      for (const { station, isMain } of this.fanoutStations()) {
+        const ref = isMain ? row.mainStreamerRef : row.testStreamerRef;
+        if (!ref || !this.canWrite(station)) continue;
+        const result = await this.deps.streamers.update(station, ref, {
+          ...this.defFor(row, isMain),
+          scheduleItems,
+        });
+        if (!result.ok) {
+          this.deps.logger.warn("live-schedule push failed", {
+            broadcasterId,
+            station: station.value,
+            reason: result.error.message,
+          });
+        }
+      }
+    }
   }
 
   /**

@@ -282,6 +282,27 @@ export function buildServer(config: AppConfig = loadConfig()) {
     writeStations: config.writeStations,
     logger: logger.child({ component: "broadcasters" }),
   });
+
+  // Live-slot projection (PD §5.10): a validated live slot's weekly times drive
+  // its broadcaster's streamer schedule. Debounced like the M3 driver (the undo
+  // window, §7.5) and scoped to the MAIN-station grid — the fan-out mirrors it
+  // to test. Enforcement stays each broadcaster's own setting; the schedule is
+  // only filled, never enforced here.
+  let liveScheduleTimer: ReturnType<typeof setTimeout> | null = null;
+  bus.on("scheduling.grid-changed", (event) => {
+    if (event.station !== config.mainStation.value) return;
+    if (liveScheduleTimer) clearTimeout(liveScheduleTimer);
+    liveScheduleTimer = setTimeout(() => {
+      liveScheduleTimer = null;
+      void schedulingService
+        .liveScheduleItemsByBroadcaster(config.mainStation)
+        .then((byBroadcaster) => broadcasterService.applyLiveSchedules(byBroadcaster))
+        .catch((error) =>
+          logger.error("live-schedule projection failed", { error: String(error) }),
+        );
+    }, 4000);
+  });
+
   const cookieSecret = loadOrCreateSessionSecret(
     config.sessionSecret,
     resolveDataPath("data/session-secret"),

@@ -23,6 +23,13 @@ export interface AccountDirectoryPort {
  * (docs/2 §3.5), M4's fan-out surface. The adapter enforces docs/2 §7.7 on
  * top of the composition root's config: writes reach ONLY allowed stations.
  */
+/** A weekly airtime window (HHMM ints, weekday array) — mirrors the grid slot. */
+export interface StreamerScheduleItem {
+  startTime: number;
+  endTime: number;
+  days: number[];
+}
+
 export interface StreamerDef {
   username: string;
   /** Present on create/rotate only — never read back from upstream. */
@@ -32,6 +39,12 @@ export interface StreamerDef {
   comments: string;
   isActive: boolean;
   enforceSchedule: boolean;
+  /**
+   * Weekly airtime from the grid's validated live slots (PD §5.10). Whether it
+   * actually restricts the streamer is `enforceSchedule` — a per-broadcaster
+   * choice (internal accounts stay open; external ones are enforced).
+   */
+  scheduleItems?: StreamerScheduleItem[];
 }
 
 export interface StreamerRecord {

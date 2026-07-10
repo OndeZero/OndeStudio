@@ -103,5 +103,12 @@ function toPayload(def: Partial<StreamerDef>): Record<string, unknown> {
   if (def.comments !== undefined) payload.comments = def.comments;
   if (def.isActive !== undefined) payload.is_active = def.isActive;
   if (def.enforceSchedule !== undefined) payload.enforce_schedule = def.enforceSchedule;
+  if (def.scheduleItems !== undefined) {
+    payload.schedule_items = def.scheduleItems.map((item) => ({
+      start_time: item.startTime,
+      end_time: item.endTime,
+      days: item.days,
+    }));
+  }
   return payload;
 }

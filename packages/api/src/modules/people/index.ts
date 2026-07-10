@@ -12,6 +12,7 @@ export type {
   StreamerDef,
   StreamerDirectoryPort,
   StreamerRecord,
+  StreamerScheduleItem,
 } from "./ports";
 export type { PeopleRepo } from "./repo";
 export { createPeopleRoutes } from "./routes";

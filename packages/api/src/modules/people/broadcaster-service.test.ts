@@ -6,14 +6,24 @@ import { createDb } from "../../platform/db";
 import { silentLogger } from "../../platform/logger";
 import { DrizzleBroadcasterRepo } from "./broadcaster-repo";
 import { BroadcasterService } from "./broadcaster-service";
-import type { StreamerDef, StreamerDirectoryPort, StreamerRecord } from "./ports";
+import type {
+  StreamerDef,
+  StreamerDirectoryPort,
+  StreamerRecord,
+  StreamerScheduleItem,
+} from "./ports";
 
 const oz = unwrap(StationId.parse("oz"));
 const wzTest = unwrap(StationId.parse("wz-test"));
 
+type StoredStreamer = StreamerRecord & {
+  password?: string;
+  scheduleItems?: StreamerScheduleItem[];
+};
+
 /** In-memory playout side, recording every write per station. */
 class FakeStreamers implements StreamerDirectoryPort {
-  streamers = new Map<string, Map<string, StreamerRecord & { password?: string }>>();
+  streamers = new Map<string, Map<string, StoredStreamer>>();
   private nextRef = 100;
   fail = false;
 
@@ -57,6 +67,7 @@ class FakeStreamers implements StreamerDirectoryPort {
       enforceSchedule: def.enforceSchedule,
       comments: def.comments,
       password: def.password,
+      scheduleItems: def.scheduleItems,
     });
     return ok({ ref });
   }
@@ -72,6 +83,7 @@ class FakeStreamers implements StreamerDirectoryPort {
       ...(def.comments !== undefined ? { comments: def.comments } : {}),
       ...(def.enforceSchedule !== undefined ? { enforceSchedule: def.enforceSchedule } : {}),
       ...(def.password !== undefined ? { password: def.password } : {}),
+      ...(def.scheduleItems !== undefined ? { scheduleItems: def.scheduleItems } : {}),
     });
     return ok(undefined);
   }
@@ -216,5 +228,43 @@ describe("BroadcasterService fan-out (docs/2 §7.7 posture: wz-test only)", () =
     expect(synced.broadcaster.stations.find((s) => s.station === "wz-test")?.ref).toBeTruthy();
     // Idempotence guard: a linked mirror refuses a second sync.
     expect((await service.syncTestMirror(pwood.id)).ok).toBe(false);
+  });
+});
+
+describe("BroadcasterService.applyLiveSchedules (live-slot projection, PD §5.10)", () => {
+  test("fills the streamer schedule on writable stations, leaving enforce and others untouched", async () => {
+    const ext = unwrap(
+      await service.create({
+        username: "Ext",
+        displayName: "Ext DJ",
+        kind: "external",
+        enforceSchedule: true,
+        replayFlag: "not_specified",
+      }),
+    );
+    const team = unwrap(
+      await service.create({
+        username: "Team",
+        displayName: "Team account",
+        kind: "team",
+        enforceSchedule: false,
+        replayFlag: "not_specified",
+      }),
+    );
+
+    const items = [{ startTime: 2000, endTime: 2200, days: [5] }];
+    await service.applyLiveSchedules(new Map([[ext.broadcaster.id, items]]));
+
+    const testStreamers = streamers.streamers.get("wz-test");
+    const extRef = ext.broadcaster.stations.find((s) => s.station === "wz-test")?.ref ?? "";
+    const teamRef = team.broadcaster.stations.find((s) => s.station === "wz-test")?.ref ?? "";
+
+    // The bound broadcaster got its schedule; enforce stays false on the mirror.
+    expect(testStreamers?.get(extRef)?.scheduleItems).toEqual(items);
+    expect(testStreamers?.get(extRef)?.enforceSchedule).toBe(false);
+    // The team account was not in the map — left untouched (no schedule pushed).
+    expect(testStreamers?.get(teamRef)?.scheduleItems).toBeUndefined();
+    // oz is blocked (§7.7) — never written.
+    expect(streamers.streamers.get("oz")).toBeUndefined();
   });
 });
