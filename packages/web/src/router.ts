@@ -7,8 +7,12 @@ import { useAuthStore } from "./stores/auth";
  * M2 decision: everything sits behind login except the two auth surfaces —
  * one consistent rule instead of per-page judgement (even /onair, whose
  * occurrence fetches are gated anyway).
+ *
+ * `self` is public to the *team* guard on purpose: it is a separate realm
+ * (PD §5.6, `os_bc_session`) that runs its own broadcaster auth internally, so
+ * the team guard must never redirect it to the team /login.
  */
-const PUBLIC_ROUTES = new Set(["login", "setup"]);
+const PUBLIC_ROUTES = new Set(["login", "setup", "self"]);
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -64,6 +68,14 @@ export const router = createRouter({
       path: "/setup",
       name: "setup",
       component: () => import("./features/auth/setup-page.vue"),
+    },
+    {
+      // External-broadcaster self-service (PD §5.6): a separate auth realm in
+      // the same SPA. The team guard leaves it alone (PUBLIC_ROUTES); the page
+      // and its store own the broadcaster session (os_bc_session) internally.
+      path: "/self",
+      name: "self",
+      component: () => import("./features/self-service/self-page.vue"),
     },
   ],
 });

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from "vue";
+import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { railOpen } from "./features/grid/rail-state";
 import { dismissToast, runToastAction, toasts } from "./features/grid/toast";
@@ -19,6 +19,14 @@ const auth = useAuthStore();
 const notifications = useNotificationsStore();
 const router = useRouter();
 const route = useRoute();
+
+/**
+ * /self is the external-broadcaster realm (PD §5.6): a separate session in the
+ * same SPA. It must never see team chrome — no wordmark-nav, no station
+ * switcher, no team logout. So for /self we render *only* the router-view and
+ * let the self-service page supply its own minimal header.
+ */
+const isSelf = computed(() => route.path.startsWith("/self"));
 
 // Active-state matching is manual: /board/:id? style records make
 // router-link-active unreliable for the bare link targets.
@@ -77,7 +85,9 @@ async function onLogout(): Promise<void> {
 </script>
 
 <template>
-  <div class="shell">
+  <!-- The external-broadcaster realm renders with none of the team shell. -->
+  <router-view v-if="isSelf" />
+  <div v-else class="shell">
     <header class="shell-header">
       <!-- Kept as one text run so the accessible name is exactly "OndeStudio". -->
       <h1 class="wordmark">Onde<span class="wordmark-accent">Studio</span></h1>
