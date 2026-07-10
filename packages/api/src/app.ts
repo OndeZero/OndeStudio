@@ -14,10 +14,13 @@ import {
 import { DrizzleCollaborationRepo } from "./modules/collaboration/wiring";
 import { ContentService, createContentRoutes } from "./modules/content";
 import {
+  BroadcasterAuthService,
   BroadcasterService,
   createBroadcasterRoutes,
+  createBroadcasterSelfRoutes,
   createPeopleRoutes,
   PeopleService,
+  type SelfSlotsProvider,
 } from "./modules/people";
 import { DrizzleBroadcasterRepo, DrizzlePeopleRepo } from "./modules/people/wiring";
 import { createPlayoutRoutes, onAirToContract, PlayoutService } from "./modules/playout";
@@ -46,6 +49,7 @@ import {
   type MediaScanPort,
   SchedulingService,
   ShowService,
+  slotToContract,
 } from "./modules/scheduling";
 import { DrizzleSchedulingRepo } from "./modules/scheduling/wiring";
 import { createAuthMiddleware, SESSION_COOKIE } from "./platform/auth";
@@ -68,6 +72,9 @@ const PUBLIC_PATHS = [
   /^\/api\/v1\/auth\/(login|setup)$/,
   /^\/api\/v1\/stations\/[^/]+\/now$/,
   /^\/api\/v1\/stations\/[^/]+\/sse$/,
+  // Self-service (PD §5.6) is its own auth realm — the team gate steps aside and
+  // the broadcaster middleware guards /self/me + /self/slots.
+  /^\/api\/v1\/self\//,
 ];
 
 /**
@@ -274,14 +281,35 @@ export function buildServer(config: AppConfig = loadConfig()) {
   });
   // M4 fan-out: writes reach ONLY config.writeStations (docs/2 §7.7) — the
   // adapter enforces it a second time (defense in depth around `oz`).
+  const broadcasterRepo = new DrizzleBroadcasterRepo(db);
   const broadcasterService = new BroadcasterService({
-    repo: new DrizzleBroadcasterRepo(db),
+    repo: broadcasterRepo,
     streamers: new AzuracastStreamerAdapter(azuracast, config.writeStations),
     mainStation: config.mainStation,
     testStation: config.testStation,
     writeStations: config.writeStations,
     logger: logger.child({ component: "broadcasters" }),
   });
+
+  // Self-service (PD §5.6): broadcasters sign in with Icecast credentials and
+  // manage their own slots — its own auth realm, sharing the broadcaster repo.
+  const broadcasterAuth = new BroadcasterAuthService({
+    repo: broadcasterRepo,
+    clock: systemClock,
+    logger: logger.child({ component: "self-service" }),
+  });
+  const selfSlots: SelfSlotsProvider = {
+    slotsFor: async (broadcasterId) => {
+      const records = await schedulingService.listSlots(config.mainStation);
+      return {
+        station: config.mainStation.value,
+        zone: config.stationTz,
+        slots: records
+          .filter((record) => record.slot.broadcasterId === broadcasterId)
+          .map((record) => slotToContract(record, config.mainStation.value)),
+      };
+    },
+  };
 
   // Live-slot projection (PD §5.10): a validated live slot's weekly times drive
   // its broadcaster's streamer schedule. Debounced like the M3 driver (the undo
@@ -323,6 +351,7 @@ export function buildServer(config: AppConfig = loadConfig()) {
     }),
   );
   api.route("/", createPeopleRoutes(peopleService, cookieSecret));
+  api.route("/", createBroadcasterSelfRoutes(broadcasterAuth, cookieSecret, selfSlots));
   api.route(
     "/",
     createBroadcasterRoutes(

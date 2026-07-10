@@ -1,6 +1,20 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "../../platform/db";
-import { broadcasters } from "./schema";
+import { broadcasterSessions, broadcasters } from "./schema";
+
+/** Auth-only view of a broadcaster, exposing the password hash for verification. */
+export interface BroadcasterAuthRow {
+  id: number;
+  username: string;
+  displayName: string;
+  kind: "team" | "external";
+  passwordHash: string | null;
+}
+
+export interface BroadcasterSessionRow {
+  broadcasterId: number;
+  expiresAt: string;
+}
 
 export interface BroadcasterRow {
   id: number;
@@ -43,6 +57,18 @@ export interface BroadcasterRepo {
   }): Promise<BroadcasterRow>;
   update(id: number, fields: BroadcasterFields): Promise<void>;
   remove(id: number): Promise<void>;
+  /** Auth lookup — carries the password hash (never leaves the auth service). */
+  findAuthByUsername(username: string): Promise<BroadcasterAuthRow | null>;
+  createSession(session: {
+    id: string;
+    broadcasterId: number;
+    createdAt: string;
+    lastSeenAt: string;
+    expiresAt: string;
+  }): Promise<void>;
+  getSession(id: string): Promise<BroadcasterSessionRow | null>;
+  touchSession(id: string, lastSeenAt: string): Promise<void>;
+  deleteSession(id: string): Promise<void>;
 }
 
 export class DrizzleBroadcasterRepo implements BroadcasterRepo {
@@ -86,6 +112,50 @@ export class DrizzleBroadcasterRepo implements BroadcasterRepo {
 
   async remove(id: number): Promise<void> {
     await this.db.delete(broadcasters).where(eq(broadcasters.id, id));
+  }
+
+  async findAuthByUsername(username: string): Promise<BroadcasterAuthRow | null> {
+    const row = (
+      await this.db.select().from(broadcasters).where(eq(broadcasters.username, username)).limit(1)
+    )[0];
+    return row
+      ? {
+          id: row.id,
+          username: row.username,
+          displayName: row.displayName,
+          kind: row.kind,
+          passwordHash: row.passwordHash,
+        }
+      : null;
+  }
+
+  async createSession(session: Parameters<BroadcasterRepo["createSession"]>[0]): Promise<void> {
+    await this.db.insert(broadcasterSessions).values(session);
+  }
+
+  async getSession(id: string): Promise<BroadcasterSessionRow | null> {
+    const row = (
+      await this.db
+        .select({
+          broadcasterId: broadcasterSessions.broadcasterId,
+          expiresAt: broadcasterSessions.expiresAt,
+        })
+        .from(broadcasterSessions)
+        .where(eq(broadcasterSessions.id, id))
+        .limit(1)
+    )[0];
+    return row ?? null;
+  }
+
+  async touchSession(id: string, lastSeenAt: string): Promise<void> {
+    await this.db
+      .update(broadcasterSessions)
+      .set({ lastSeenAt })
+      .where(eq(broadcasterSessions.id, id));
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    await this.db.delete(broadcasterSessions).where(eq(broadcasterSessions.id, id));
   }
 }
 

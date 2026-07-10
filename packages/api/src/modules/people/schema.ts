@@ -57,3 +57,19 @@ export const userSessions = sqliteTable("user_session", {
   lastSeenAt: text("last_seen_at").notNull(),
   expiresAt: text("expires_at").notNull(),
 });
+
+/**
+ * Broadcaster self-service sessions (PD §5.6): a SEPARATE store from team
+ * user_session, keyed to the broadcaster and its own cookie — an external
+ * broadcaster authenticated by Icecast credentials can never reach a team
+ * surface, whatever the cookie.
+ */
+export const broadcasterSessions = sqliteTable("broadcaster_session", {
+  id: text("id").primaryKey(),
+  broadcasterId: integer("broadcaster_id")
+    .notNull()
+    .references(() => broadcasters.id, { onDelete: "cascade" }),
+  createdAt: text("created_at").notNull(),
+  lastSeenAt: text("last_seen_at").notNull(),
+  expiresAt: text("expires_at").notNull(),
+});

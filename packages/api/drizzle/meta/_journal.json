@@ -64,6 +64,13 @@
       "when": 1783680702011,
       "tag": "0008_absurd_manta",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1783683802603,
+      "tag": "0009_equal_ironclad",
+      "breakpoints": true
     }
   ]
 }

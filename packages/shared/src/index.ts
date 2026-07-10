@@ -13,6 +13,7 @@ export * from "./media";
 export * from "./on-air";
 export * from "./scheduling";
 export * from "./scheduling-states";
+export * from "./self-service";
 export * from "./shows";
 export * from "./sse";
 export * from "./station";

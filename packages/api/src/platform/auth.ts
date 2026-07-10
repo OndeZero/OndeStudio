@@ -9,14 +9,25 @@ export interface RequestUser {
   role: "team" | "external";
 }
 
-// Every route sees a typed `c.get("user")` — set exclusively by this middleware.
+/** What the self-service middleware attaches under `broadcaster` (PD §5.6). */
+export interface RequestBroadcaster {
+  id: number;
+  username: string;
+  displayName: string;
+  kind: "team" | "external";
+}
+
+// Every route sees a typed `c.get("user")` / `c.get("broadcaster")` — set
+// exclusively by the two middlewares below (team vs self-service).
 declare module "hono" {
   interface ContextVariableMap {
     user: RequestUser;
+    broadcaster: RequestBroadcaster;
   }
 }
 
 export const SESSION_COOKIE = "os_session";
+export const BROADCASTER_SESSION_COOKIE = "os_bc_session";
 
 export interface AuthMiddlewareOptions {
   cookieSecret: string;
@@ -43,6 +54,30 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions) {
       return c.json({ error: "authentication required", kind: "unauthenticated" }, 401);
     }
     c.set("user", user);
+    return next();
+  });
+}
+
+/**
+ * Self-service gate (PD §5.6): the broadcaster's own cookie, verified against
+ * its own session store. Distinct from the team middleware so the two auth
+ * realms never blur — the composition root leaves `/self/*` out of the team
+ * gate and applies this to the guarded self-service routes.
+ */
+export function createBroadcasterAuthMiddleware(options: {
+  cookieSecret: string;
+  verify: (sessionId: string) => Promise<RequestBroadcaster | null>;
+}) {
+  return createMiddleware<{ Variables: { broadcaster: RequestBroadcaster } }>(async (c, next) => {
+    const sessionId = await getSignedCookie(c, options.cookieSecret, BROADCASTER_SESSION_COOKIE);
+    const broadcaster = sessionId ? await options.verify(sessionId) : null;
+    if (!broadcaster) {
+      return c.json(
+        { error: "self-service authentication required", kind: "unauthenticated" },
+        401,
+      );
+    }
+    c.set("broadcaster", broadcaster);
     return next();
   });
 }
