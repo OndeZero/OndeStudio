@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { watch } from "vue";
+import { onMounted, onUnmounted, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { railOpen } from "./features/grid/rail-state";
 import { dismissToast, runToastAction, toasts } from "./features/grid/toast";
+import QuickOpen from "./features/quick-open/quick-open.vue";
+import { quickOpenOpen } from "./features/quick-open/quick-open-state";
 import { useAuthStore } from "./stores/auth";
 import { useNotificationsStore } from "./stores/notifications";
 import { useStationStore } from "./stores/station";
@@ -40,6 +42,18 @@ watch(
   },
   { immediate: true },
 );
+
+// Cmd/Ctrl-K opens the quick-open palette from anywhere in the app (once
+// signed in). The palette itself owns Escape/selection.
+function onGlobalKeydown(event: KeyboardEvent): void {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    if (!auth.me) return;
+    event.preventDefault();
+    quickOpenOpen.value = !quickOpenOpen.value;
+  }
+}
+onMounted(() => window.addEventListener("keydown", onGlobalKeydown));
+onUnmounted(() => window.removeEventListener("keydown", onGlobalKeydown));
 
 /** Bell: on the grid the rail IS the inbox — toggle it; elsewhere, go there. */
 function onBellClick(): void {
@@ -79,6 +93,16 @@ async function onLogout(): Promise<void> {
           </RouterLink>
         </nav>
         <div class="shell-side">
+          <button
+            type="button"
+            class="quick-open-btn"
+            title="Quick open (Cmd/Ctrl + K)"
+            aria-label="Quick open"
+            @click="quickOpenOpen = true"
+          >
+            <span class="qo-glyph">⌕</span>
+            <kbd class="qo-kbd">⌘K</kbd>
+          </button>
           <button
             type="button"
             class="bell"
@@ -126,6 +150,8 @@ async function onLogout(): Promise<void> {
         </button>
       </div>
     </div>
+
+    <QuickOpen v-if="auth.me" />
   </div>
 </template>
 
@@ -181,6 +207,32 @@ async function onLogout(): Promise<void> {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* Quick-open trigger: a search glyph plus the shortcut hint (⌘K). */
+.quick-open-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+.quick-open-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+.qo-glyph {
+  font-size: var(--text-md);
+  line-height: 1;
+}
+.qo-kbd {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
 }
 
 .bell {
