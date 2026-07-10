@@ -1,30 +1,46 @@
 <script setup lang="ts">
 import { NEGOTIATION_STATES, SLOT_KINDS } from "@ondestudio/shared";
-import { computed } from "vue";
-import { formatWeekLabel } from "../../lib/station-time";
+import type { GridView } from "./grid-store";
 import { useGridStore } from "./grid-store";
 import { SLOT_KIND_GLYPHS } from "./grid-symbols";
 
 /**
- * Week navigation, state/kind filter chips (empty selection = show all)
- * and the visual-coding legend. Store-driven so grid-page stays a thin
- * orchestrator.
+ * Range navigation, the time-lens zoom (week / 3-day / month), state/kind
+ * filter chips (empty selection = show all) and the visual-coding legend.
+ * Store-driven so grid-page stays a thin orchestrator.
  */
 const emit = defineEmits<{ addSlot: [] }>();
 
 const store = useGridStore();
-const weekLabel = computed(() => formatWeekLabel(store.weekMonday));
+const VIEWS: { mode: GridView; label: string }[] = [
+  { mode: "week", label: "week" },
+  { mode: "day3", label: "3-day" },
+  { mode: "month", label: "month" },
+];
 </script>
 
 <template>
   <div class="toolbar">
     <div class="toolbar-row">
-      <nav class="week-nav" aria-label="Week navigation">
-        <button type="button" class="nav-btn" title="Previous week" @click="store.prevWeek()">‹</button>
+      <nav class="week-nav" aria-label="Range navigation">
+        <button type="button" class="nav-btn" title="Previous" @click="store.prev()">‹</button>
         <button type="button" class="nav-btn" @click="store.today()">Today</button>
-        <button type="button" class="nav-btn" title="Next week" @click="store.nextWeek()">›</button>
+        <button type="button" class="nav-btn" title="Next" @click="store.next()">›</button>
       </nav>
-      <h2 class="week-label">{{ weekLabel }}</h2>
+      <div class="zoom-switch" role="group" aria-label="Zoom">
+        <button
+          v-for="view in VIEWS"
+          :key="view.mode"
+          type="button"
+          class="zoom-btn"
+          :class="{ active: store.viewMode === view.mode }"
+          :aria-pressed="store.viewMode === view.mode"
+          @click="store.setViewMode(view.mode)"
+        >
+          {{ view.label }}
+        </button>
+      </div>
+      <h2 class="week-label">{{ store.rangeLabel }}</h2>
       <span v-if="store.loading" class="loading-dot" title="Loading window…" />
       <div class="toolbar-actions">
         <details class="legend">
@@ -112,6 +128,30 @@ const weekLabel = computed(() => formatWeekLabel(store.weekMonday));
 }
 
 .week-nav { display: flex; gap: var(--space-1); }
+
+/* Segmented time-lens switch — one control, the active lens filled. */
+.zoom-switch {
+  display: flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.zoom-btn {
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border: none;
+  border-left: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+.zoom-btn:first-child { border-left: none; }
+.zoom-btn:hover { color: var(--color-text); }
+.zoom-btn.active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
 
 .nav-btn {
   padding: var(--space-1) var(--space-2);

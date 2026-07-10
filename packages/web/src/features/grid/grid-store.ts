@@ -18,7 +18,20 @@ import { computed, ref } from "vue";
 import { apiGet } from "../../lib/api/client";
 import { apiMutate } from "../../lib/api/mutate";
 import { subscribeStationSse } from "../../lib/api/sse";
-import { addDays, dayStartUtc, utcToWall, wallToUtc, weekMondayOf } from "../../lib/station-time";
+import {
+  addDays,
+  addMonthsIso,
+  dayStartUtc,
+  firstOfMonthIso,
+  formatDayRangeLabel,
+  formatMonthLabel,
+  formatWeekLabel,
+  isoDayOf,
+  mondayOfIso,
+  utcToWall,
+  wallToUtc,
+  weekMondayOf,
+} from "../../lib/station-time";
 import { useStationStore } from "../../stores/station";
 import { type DayWindow, splitIntoDaySegments } from "./grid-segments";
 import { pushToast } from "./toast";
@@ -34,10 +47,16 @@ const UNDO_TTL_MS = 6000;
 /** Until a `stations` resource exposes per-station config (docs/2 §6.2). */
 export const DEFAULT_ZONE = "Europe/Paris";
 
+/** The time-lens zoom (docs/2 §11 fast-follow): a week, a 3-day, or a month. */
+export type GridView = "week" | "day3" | "month";
+
 export const useGridStore = defineStore("grid", () => {
   const stationStore = useStationStore();
 
-  const weekMonday = ref(weekMondayOf(new Date(), DEFAULT_ZONE));
+  const viewMode = ref<GridView>("week");
+  // The reference day the visible range is derived from (Monday in week mode,
+  // the first column in 3-day mode, any day of the month in month mode).
+  const anchorDay = ref(weekMondayOf(new Date(), DEFAULT_ZONE));
   const zone = ref(DEFAULT_ZONE);
   const occurrences = ref<Occurrence[]>([]);
   const mirrorBlocks = ref<MirrorBlock[]>([]);
@@ -49,9 +68,39 @@ export const useGridStore = defineStore("grid", () => {
   const kindFilter = ref<ReadonlySet<SlotKind>>(new Set());
   const loading = ref(false);
 
-  const visibleDays = computed(() =>
-    Array.from({ length: 7 }, (_, i) => addDays(weekMonday.value, i)),
-  );
+  // The visible calendar days, derived from the lens. Month covers whole weeks
+  // (Monday-aligned) so the grid is always rectangular.
+  const rangeDays = computed<string[]>(() => {
+    if (viewMode.value === "day3") {
+      return Array.from({ length: 3 }, (_, i) => addDays(anchorDay.value, i));
+    }
+    if (viewMode.value === "month") {
+      const last = addDays(firstOfMonthIso(addMonthsIso(anchorDay.value, 1)), -1);
+      const days: string[] = [];
+      let monday = mondayOfIso(firstOfMonthIso(anchorDay.value));
+      while (monday <= last) {
+        for (let i = 0; i < 7; i++) days.push(addDays(monday, i));
+        monday = addDays(monday, 7);
+      }
+      return days;
+    }
+    const monday = mondayOfIso(anchorDay.value);
+    return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+  });
+
+  /** Kept for the "jump to this week" callers (board, show hub, rail). */
+  const weekMonday = computed(() => mondayOfIso(anchorDay.value));
+
+  /** Month laid out as Monday-aligned weeks, for the calendar view. */
+  const monthWeeks = computed<string[][]>(() => {
+    const weeks: string[][] = [];
+    for (let i = 0; i < rangeDays.value.length; i += 7) {
+      weeks.push(rangeDays.value.slice(i, i + 7));
+    }
+    return weeks;
+  });
+
+  const visibleDays = computed(() => rangeDays.value);
 
   const dayWindows = computed<DayWindow[]>(() =>
     visibleDays.value.map((dayIso) => ({
@@ -60,6 +109,31 @@ export const useGridStore = defineStore("grid", () => {
       endMs: dayStartUtc(addDays(dayIso, 1), zone.value).getTime(),
     })),
   );
+
+  /** Occurrences grouped by their start day — the month view's per-cell source. */
+  const occurrencesByDayIso = computed(() => {
+    const map = new Map<string, Occurrence[]>();
+    for (const occurrence of occurrences.value) {
+      const day = isoDayOf(new Date(occurrence.startsAt), zone.value);
+      const list = map.get(day);
+      if (list) list.push(occurrence);
+      else map.set(day, [occurrence]);
+    }
+    return map;
+  });
+
+  /** The heading for the current lens ("Mon 6 – Sun 12 Jul 2026" / "July 2026"). */
+  const rangeLabel = computed(() => {
+    if (viewMode.value === "month") return formatMonthLabel(anchorDay.value);
+    if (viewMode.value === "day3") {
+      const days = rangeDays.value;
+      return formatDayRangeLabel(
+        days[0] ?? anchorDay.value,
+        days[days.length - 1] ?? anchorDay.value,
+      );
+    }
+    return formatWeekLabel(mondayOfIso(anchorDay.value));
+  });
 
   const occurrencesByDay = computed(() =>
     splitIntoDaySegments(
@@ -97,8 +171,11 @@ export const useGridStore = defineStore("grid", () => {
     const epoch = ++windowEpoch;
     const station = stationStore.current;
     loading.value = true;
-    const from = dayStartUtc(weekMonday.value, zone.value).toISOString();
-    const to = dayStartUtc(addDays(weekMonday.value, 7), zone.value).toISOString();
+    const days = rangeDays.value;
+    const first = days[0] ?? anchorDay.value;
+    const lastPlusOne = addDays(days[days.length - 1] ?? anchorDay.value, 1);
+    const from = dayStartUtc(first, zone.value).toISOString();
+    const to = dayStartUtc(lastPlusOne, zone.value).toISOString();
 
     const query = new URLSearchParams({ from, to });
     if (negotiationFilter.value.size > 0)
@@ -147,18 +224,38 @@ export const useGridStore = defineStore("grid", () => {
     }
   }
 
+  /** Jump to a specific week (the cross-lens links land here) — always week view. */
   async function setWeek(mondayIso: string): Promise<void> {
-    weekMonday.value = mondayIso;
+    viewMode.value = "week";
+    anchorDay.value = mondayIso;
     await loadWindow();
   }
-  function prevWeek(): void {
-    void setWeek(addDays(weekMonday.value, -7));
+
+  function setViewMode(mode: GridView): void {
+    if (mode === viewMode.value) return;
+    // Snap to the week's Monday when entering week view so it stays aligned.
+    if (mode === "week") anchorDay.value = mondayOfIso(anchorDay.value);
+    viewMode.value = mode;
+    void loadWindow();
   }
-  function nextWeek(): void {
-    void setWeek(addDays(weekMonday.value, 7));
+
+  /** Step one lens-span back/forward: a week, three days, or a month. */
+  function step(direction: 1 | -1): void {
+    if (viewMode.value === "day3") anchorDay.value = addDays(anchorDay.value, 3 * direction);
+    else if (viewMode.value === "month") anchorDay.value = addMonthsIso(anchorDay.value, direction);
+    else anchorDay.value = addDays(mondayOfIso(anchorDay.value), 7 * direction);
+    void loadWindow();
+  }
+  function prev(): void {
+    step(-1);
+  }
+  function next(): void {
+    step(1);
   }
   function today(): void {
-    void setWeek(weekMondayOf(new Date(), zone.value));
+    const t = isoDayOf(new Date(), zone.value);
+    anchorDay.value = viewMode.value === "week" ? mondayOfIso(t) : t;
+    void loadWindow();
   }
 
   function toggleNegotiationFilter(state: NegotiationState): void {
@@ -323,7 +420,12 @@ export const useGridStore = defineStore("grid", () => {
   }
 
   return {
+    viewMode,
+    anchorDay,
     weekMonday,
+    rangeDays,
+    monthWeeks,
+    rangeLabel,
     zone,
     occurrences,
     mirrorBlocks,
@@ -336,14 +438,16 @@ export const useGridStore = defineStore("grid", () => {
     visibleDays,
     dayWindows,
     occurrencesByDay,
+    occurrencesByDayIso,
     mirrorBlocksByDay,
     mirrorBandsByDay,
     slotById,
     loadWindow,
     loadSlots,
     setWeek,
-    prevWeek,
-    nextWeek,
+    setViewMode,
+    prev,
+    next,
     today,
     toggleNegotiationFilter,
     toggleKindFilter,

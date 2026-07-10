@@ -141,20 +141,57 @@ const monthYearFmt = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
   timeZone: "UTC",
 });
+const monthLongYearFmt = new Intl.DateTimeFormat("en-GB", {
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
 
 /** "Mon 6" — the day-column header. */
 export function formatDayLabel(isoDay: string): string {
   return dayLabelFmt.format(new Date(dayAsUtcMs(isoDay)));
 }
 
-/** "Mon 6 – Sun 12 Jul 2026" (month shown on both sides when the week crosses one). */
-export function formatWeekLabel(mondayIso: string): string {
-  const sundayIso = addDays(mondayIso, 6);
-  const monday = new Date(dayAsUtcMs(mondayIso));
-  const sunday = new Date(dayAsUtcMs(sundayIso));
-  const sameMonth = mondayIso.slice(0, 7) === sundayIso.slice(0, 7);
+/** "Mon 6 – Sun 12 Jul 2026" for any inclusive day range (month shown on the left only when it differs). */
+export function formatDayRangeLabel(startIso: string, endIso: string): string {
+  const start = new Date(dayAsUtcMs(startIso));
+  const end = new Date(dayAsUtcMs(endIso));
+  const sameMonth = startIso.slice(0, 7) === endIso.slice(0, 7);
   const left = sameMonth
-    ? dayLabelFmt.format(monday)
-    : `${dayLabelFmt.format(monday)} ${monthFmt.format(monday)}`;
-  return `${left} – ${dayLabelFmt.format(sunday)} ${monthYearFmt.format(sunday)}`;
+    ? dayLabelFmt.format(start)
+    : `${dayLabelFmt.format(start)} ${monthFmt.format(start)}`;
+  return `${left} – ${dayLabelFmt.format(end)} ${monthYearFmt.format(end)}`;
+}
+
+/** "Mon 6 – Sun 12 Jul 2026" — the week range (kept as a thin alias). */
+export function formatWeekLabel(mondayIso: string): string {
+  return formatDayRangeLabel(mondayIso, addDays(mondayIso, 6));
+}
+
+/** "July 2026" — the month-view heading. */
+export function formatMonthLabel(isoDay: string): string {
+  return monthLongYearFmt.format(new Date(dayAsUtcMs(isoDay)));
+}
+
+/** The Monday of the week containing `isoDay` (calendar-day arithmetic). */
+export function mondayOfIso(isoDay: string): string {
+  return addDays(isoDay, 1 - isoWeekdayOf(isoDay));
+}
+
+/** The first calendar day of `isoDay`'s month. */
+export function firstOfMonthIso(isoDay: string): string {
+  return `${isoDay.slice(0, 7)}-01`;
+}
+
+/** Shift by whole months, clamping the day to the target month's length. */
+export function addMonthsIso(isoDay: string, months: number): string {
+  const year = Number(isoDay.slice(0, 4));
+  const month = Number(isoDay.slice(5, 7));
+  const day = Number(isoDay.slice(8, 10));
+  const total = year * 12 + (month - 1) + months;
+  const ny = Math.floor(total / 12);
+  const nm = (total % 12) + 1;
+  const lastDay = new Date(Date.UTC(ny, nm, 0)).getUTCDate();
+  const nd = Math.min(day, lastDay);
+  return `${String(ny).padStart(4, "0")}-${String(nm).padStart(2, "0")}-${String(nd).padStart(2, "0")}`;
 }

@@ -184,3 +184,51 @@ describe("grid-store mirror degradation", () => {
     expect(store.mirrorError).toBeNull();
   });
 });
+
+describe("grid-store view lenses (zooms)", () => {
+  it("3-day lens shows three columns from the anchor and labels the range", async () => {
+    primeApi([]);
+    const store = useGridStore();
+    await store.setWeek("2026-07-06"); // anchor = Mon 6
+    store.setViewMode("day3");
+
+    expect(store.viewMode).toBe("day3");
+    expect(store.rangeDays).toEqual(["2026-07-06", "2026-07-07", "2026-07-08"]);
+    expect(store.rangeLabel).toBe("Mon 6 – Wed 8 Jul 2026");
+  });
+
+  it("next/prev step by the lens span (three days)", async () => {
+    primeApi([]);
+    const store = useGridStore();
+    await store.setWeek("2026-07-06");
+    store.setViewMode("day3");
+
+    store.next();
+    expect(store.rangeDays[0]).toBe("2026-07-09");
+    store.prev();
+    expect(store.rangeDays[0]).toBe("2026-07-06");
+  });
+
+  it("month lens covers whole Monday-aligned weeks and groups occurrences by day", async () => {
+    primeApi([occurrenceFixture()]); // starts Wed 8 Jul (23:00 Paris)
+    const store = useGridStore();
+    await store.setWeek("2026-07-15");
+    store.setViewMode("month");
+    await store.loadWindow();
+
+    // July 2026: 1 Jul is Wed → grid runs Mon 29 Jun … Sun 2 Aug (5 weeks).
+    expect(store.monthWeeks).toHaveLength(5);
+    expect(store.monthWeeks[0]?.[0]).toBe("2026-06-29");
+    expect(store.rangeDays[store.rangeDays.length - 1]).toBe("2026-08-02");
+    expect(store.rangeLabel).toBe("July 2026");
+    expect(store.occurrencesByDayIso.get("2026-07-08")).toHaveLength(1);
+  });
+
+  it("week nav still snaps the anchor to Monday", async () => {
+    primeApi([]);
+    const store = useGridStore();
+    await store.setWeek("2026-07-06");
+    store.next();
+    expect(store.weekMonday).toBe("2026-07-13");
+  });
+});

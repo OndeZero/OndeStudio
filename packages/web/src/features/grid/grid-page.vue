@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { Occurrence } from "@ondestudio/shared";
 import { computed, onUnmounted, ref, watch } from "vue";
-import { formatHm, isoDayOf } from "../../lib/station-time";
+import { addDays, formatHm, isoDayOf, isoWeekdayOf } from "../../lib/station-time";
 import { useStationStore } from "../../stores/station";
 import AttentionRail from "./attention-rail.vue";
 import CreateSlotDialog from "./create-slot-dialog.vue";
+import GridMonth from "./grid-month.vue";
 import { useGridStore } from "./grid-store";
 import GridToolbar from "./grid-toolbar.vue";
 import GridWeek from "./grid-week.vue";
@@ -49,6 +50,11 @@ function openQuickEdit(payload: {
   quickEdit.value = { occurrenceId: payload.occurrence.id, anchor: payload.anchor };
 }
 
+/** Month → week drill-down: clicking a day lands on the week that contains it. */
+function openMonthDay(dayIso: string): void {
+  void store.setWeek(addDays(dayIso, 1 - isoWeekdayOf(dayIso)));
+}
+
 const createDraft = ref<{ dayIso: string; time: string; durationMin: number } | null>(null);
 
 function openCreateDefault(): void {
@@ -80,10 +86,11 @@ function defaultTime(): string {
       </button>
     </div>
 
-    <!-- The rail docks beside the week without disturbing its internal scroll. -->
+    <!-- The rail docks beside the grid without disturbing its internal scroll. -->
     <div class="grid-body">
       <div class="grid-main">
-        <GridWeek @open="openQuickEdit" @create="createDraft = $event" />
+        <GridMonth v-if="store.viewMode === 'month'" @open="openMonthDay" />
+        <GridWeek v-else @open="openQuickEdit" @create="createDraft = $event" />
       </div>
       <AttentionRail />
     </div>

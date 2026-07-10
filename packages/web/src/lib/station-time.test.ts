@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   addDays,
+  addMonthsIso,
   dayStartUtc,
+  firstOfMonthIso,
   formatDayLabel,
+  formatDayRangeLabel,
   formatHm,
+  formatMonthLabel,
   formatWeekLabel,
   isoDayOf,
   isoWeekdayOf,
+  mondayOfIso,
   utcToWall,
   wallToUtc,
   weekMondayOf,
@@ -41,6 +46,31 @@ describe("station-time on normal days", () => {
     expect(formatDayLabel("2026-07-06")).toBe("Mon 6");
     expect(formatWeekLabel("2026-07-06")).toBe("Mon 6 – Sun 12 Jul 2026");
     expect(formatWeekLabel("2026-06-29")).toBe("Mon 29 Jun – Sun 5 Jul 2026");
+  });
+});
+
+describe("calendar-lens helpers (grid zooms)", () => {
+  it("labels an arbitrary day range and a month", () => {
+    expect(formatDayRangeLabel("2026-07-09", "2026-07-11")).toBe("Thu 9 – Sat 11 Jul 2026");
+    expect(formatDayRangeLabel("2026-07-30", "2026-08-01")).toBe("Thu 30 Jul – Sat 1 Aug 2026");
+    expect(formatMonthLabel("2026-07-15")).toBe("July 2026");
+  });
+
+  it("finds the Monday of any day's week", () => {
+    expect(mondayOfIso("2026-07-09")).toBe("2026-07-06"); // Thu → Mon
+    expect(mondayOfIso("2026-07-06")).toBe("2026-07-06"); // Mon → itself
+    expect(mondayOfIso("2026-07-12")).toBe("2026-07-06"); // Sun → the same week's Mon
+  });
+
+  it("finds the first of the month", () => {
+    expect(firstOfMonthIso("2026-07-15")).toBe("2026-07-01");
+  });
+
+  it("shifts whole months, clamping the day and crossing years", () => {
+    expect(addMonthsIso("2026-07-15", 1)).toBe("2026-08-15");
+    expect(addMonthsIso("2026-01-31", 1)).toBe("2026-02-28"); // clamps to Feb length
+    expect(addMonthsIso("2026-01-15", -1)).toBe("2025-12-15"); // crosses the year
+    expect(addMonthsIso("2026-12-10", 1)).toBe("2027-01-10");
   });
 });
 

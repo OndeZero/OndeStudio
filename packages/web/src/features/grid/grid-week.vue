@@ -79,7 +79,7 @@ const bodyHeight = computed(() =>
 
 <template>
   <div ref="scrollEl" class="week-scroll">
-    <div class="week-grid">
+    <div class="week-grid" :style="{ '--day-count': days.length }">
       <div class="corner" />
       <div
         v-for="day in days"
@@ -150,7 +150,7 @@ const bodyHeight = computed(() =>
 
 .week-grid {
   display: grid;
-  grid-template-columns: 3.25rem repeat(7, minmax(7.5rem, 1fr));
+  grid-template-columns: 3.25rem repeat(var(--day-count, 7), minmax(7.5rem, 1fr));
   grid-template-rows: auto 1fr;
   min-width: min-content;
 }
@@ -218,7 +218,7 @@ const bodyHeight = computed(() =>
    via the 300ms hold in grid-interactions. */
 @media (max-width: 720px) {
   .week-scroll { scroll-snap-type: x mandatory; }
-  .week-grid { grid-template-columns: 2.75rem repeat(7, 80vw); }
+  .week-grid { grid-template-columns: 2.75rem repeat(var(--day-count, 7), 80vw); }
   .day-cell { scroll-snap-align: start; }
 }
 </style>
