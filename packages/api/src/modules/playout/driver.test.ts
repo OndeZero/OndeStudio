@@ -195,13 +195,18 @@ describe("PlayoutDriver reconcile loop (RFC 0001)", () => {
     expect(write.updateCalls).toBe(1); // stable again
   });
 
-  test("a manual AzuraCast edit queues a reconciliation and freezes the push (never fight)", async () => {
+  test("an AMBIGUOUS manual edit queues a reconciliation and freezes the push (never fight)", async () => {
     await driver.runOnce();
     const ref = [...write.playlists.keys()][0];
     if (!ref) throw new Error("no playlist");
-    // Someone edits the playlist directly in AzuraCast.
+    // Someone edits the playlist directly in AzuraCast — two items can't be
+    // pulled into one OS recurrence, so it escalates rather than auto-absorbing.
     const row = write.playlists.get(ref);
-    if (row) row.scheduleItems = [{ startTime: 1000, endTime: 1100, days: [1] }];
+    if (row)
+      row.scheduleItems = [
+        { startTime: 1000, endTime: 1100, days: [1] },
+        { startTime: 1500, endTime: 1600, days: [3] },
+      ];
 
     await driver.runOnce();
     const open = await driver.listReconciliations();
@@ -220,7 +225,12 @@ describe("PlayoutDriver reconcile loop (RFC 0001)", () => {
     await driver.runOnce();
     const ref = [...write.playlists.keys()][0] ?? "";
     const row = write.playlists.get(ref);
-    if (row) row.scheduleItems = [{ startTime: 1000, endTime: 1100, days: [1] }];
+    // Ambiguous (two items) so it reaches the inbox rather than auto-absorbing.
+    if (row)
+      row.scheduleItems = [
+        { startTime: 1000, endTime: 1100, days: [1] },
+        { startTime: 1500, endTime: 1600, days: [3] },
+      ];
     await driver.runOnce();
     const item = (await driver.listReconciliations())[0];
     if (!item) throw new Error("no reconciliation");
@@ -231,19 +241,20 @@ describe("PlayoutDriver reconcile loop (RFC 0001)", () => {
     expect(await driver.listReconciliations()).toHaveLength(0);
   });
 
-  test("keep-azuracast pulls the manual edit into the OndeStudio slot", async () => {
+  test("an unambiguous manual edit is auto-absorbed into the slot (no reconciliation)", async () => {
     await driver.runOnce();
     const ref = [...write.playlists.keys()][0] ?? "";
     const row = write.playlists.get(ref);
+    // A single, cleanly-invertible schedule edit (Mon+Wed 10:00–11:30).
     if (row) row.scheduleItems = [{ startTime: 1000, endTime: 1130, days: [1, 3] }];
     await driver.runOnce();
-    const item = (await driver.listReconciliations())[0];
-    if (!item) throw new Error("no reconciliation");
 
-    unwrap(await driver.resolve(item.id, "keep-azuracast"));
+    // Pulled straight into the slot — nothing queued for the team to decide.
+    expect(await driver.listReconciliations()).toHaveLength(0);
     expect(sinkCalls).toHaveLength(1);
     expect(sinkCalls[0]).toEqual({ slotId: 1, time: "10:00", durationMin: 90 });
-    expect(await driver.listReconciliations()).toHaveLength(0);
+    const proj = await repo.getByObject("slot", 1, "wz-test");
+    expect(proj?.reconcileState).toBe("synced");
   });
 
   test("a slot that stops being projectable retracts its playlist", async () => {

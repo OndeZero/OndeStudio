@@ -184,6 +184,8 @@ export class PlayoutDriver {
       }
       const seen = proj.lastSeen as NormalizedBlock | null;
       if (seen && !stableEqual(normalizeSnapshot(cur), seen)) {
+        // Unambiguous edits are pulled straight in; only ambiguous ones freeze.
+        if (slot && (await this.tryAbsorb(station, proj, cur))) return;
         return this.openDrift(proj, "edited", slot ?? null, cur);
       }
     }
@@ -335,6 +337,45 @@ export class PlayoutDriver {
       reconcileState: "synced",
       lastSyncedAt: this.deps.clock.now().toISOString(),
     });
+  }
+
+  /**
+   * Auto-absorb an unambiguous manual edit (docs/2 §11 fast-follow): if the
+   * upstream schedule inverts cleanly to a single OndeStudio recurrence, pull it
+   * into the slot instead of freezing for a decision — the grid just updates.
+   * Ambiguous edits (multiple items, every-day) return false and fall through to
+   * the reconciliation inbox. OndeStudio keeps its own name/identity: the next
+   * reconcile re-pushes it over the (now schedule-matched) upstream block.
+   */
+  private async tryAbsorb(
+    station: StationId,
+    proj: ProjectionRow,
+    cur: ScheduleBlockSnapshot,
+  ): Promise<boolean> {
+    const inverted = invertToRecurrence(cur.scheduleItems);
+    if (!inverted) return false;
+    const applied = await this.deps.sink.applyScheduleFromAzuracast(
+      station,
+      proj.osObjectId,
+      inverted,
+    );
+    if (!applied.ok) {
+      this.deps.logger.warn("driver: auto-absorb failed, escalating to reconciliation", {
+        slotId: proj.osObjectId,
+        reason: applied.error.message,
+      });
+      return false;
+    }
+    await this.persist(proj, {
+      lastSeen: normalizeSnapshot(cur),
+      lastPushed: normalizeSnapshot(cur),
+      state: "synced",
+    });
+    this.deps.logger.info("driver: drift auto-absorbed", {
+      slotId: proj.osObjectId,
+      schedule: describeItems(cur.scheduleItems),
+    });
+    return true;
   }
 
   private async openDrift(
