@@ -14,7 +14,7 @@ import { deleteCookie, getSignedCookie, setSignedCookie } from "hono/cookie";
 import type { DomainError } from "../../kernel/domain-error";
 import type { Result } from "../../kernel/result";
 import { BROADCASTER_SESSION_COOKIE, createBroadcasterAuthMiddleware } from "../../platform/auth";
-import { createRouter, respondDomainError } from "../../platform/http";
+import { createRouter, isRequestSecure, respondDomainError } from "../../platform/http";
 import type { BroadcasterAuthService } from "./broadcaster-auth-service";
 
 const errorContent = { "application/json": { schema: ApiErrorSchema } };
@@ -145,6 +145,11 @@ export function createBroadcasterSelfRoutes(
       sameSite: "Lax",
       path: "/",
       maxAge: maxAgeSec,
+      // Header-aware `Secure` (RFC 0002): the self-service surface is the one
+      // that DOES face the internet (PD §5.6), always over the tyrell TLS edge,
+      // so this is effectively always on in prod — X-Forwarded-Proto carries the
+      // real scheme across the plaintext private hop. Plain-http dev keeps it off.
+      secure: isRequestSecure(c),
     });
   };
 

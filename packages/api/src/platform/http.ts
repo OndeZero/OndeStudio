@@ -22,6 +22,21 @@ export function respondDomainError(c: Context, error: DomainError): Response {
 }
 
 /**
+ * Whether the ORIGINAL client request reached the edge over HTTPS — the input
+ * to the session cookies' `Secure` flag (RFC 0002). Behind the reverse proxy
+ * the app sees plaintext `http` on the private hop, so `X-Forwarded-Proto`
+ * (set by nginx and `tailscale serve`) is authoritative when present; only the
+ * first value matters if a chain of proxies appended more. With no header (a
+ * direct hit) fall back to the request's own scheme, so a genuine local `https`
+ * still marks the cookie and plain dev `http` does not.
+ */
+export function isRequestSecure(c: Context): boolean {
+  const forwarded = c.req.header("x-forwarded-proto");
+  if (forwarded) return forwarded.split(",")[0]?.trim().toLowerCase() === "https";
+  return new URL(c.req.url).protocol === "https:";
+}
+
+/**
  * Zod validation failures → the uniform 422 envelope, shared by every
  * OpenAPIHono sub-app (each router instance needs its own hook).
  */

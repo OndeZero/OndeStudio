@@ -10,7 +10,7 @@ import {
 import type { Context } from "hono";
 import { deleteCookie, getSignedCookie, setSignedCookie } from "hono/cookie";
 import { SESSION_COOKIE } from "../../platform/auth";
-import { createRouter, respondDomainError } from "../../platform/http";
+import { createRouter, isRequestSecure, respondDomainError } from "../../platform/http";
 import type { UserAccount } from "./domain/user-account";
 import type { PeopleService } from "./service";
 
@@ -84,10 +84,12 @@ export function createPeopleRoutes(service: PeopleService, cookieSecret: string)
       sameSite: "Lax",
       path: "/",
       maxAge: 30 * 24 * 3600,
-      // `secure` stays off: phase 1 serves localhost/LAN over http; the
-      // reverse-proxy TLS deployment flips this via a header-aware revisit (M5).
-      // Same M5 checklist: a per-IP/email login throttle before leaving the LAN
-      // — /auth/login is public and each attempt costs a full argon2 verify.
+      // `Secure` is header-aware (RFC 0002): on when the client reached the edge
+      // over HTTPS — the reverse proxy / tailscale serve sets X-Forwarded-Proto,
+      // which the app trusts over the plaintext http it sees on the private hop.
+      // Plain-http dev keeps it off. (The public /auth/login throttle lives at
+      // the tyrell edge; an app-side per-identity limit is a hardening follow-on.)
+      secure: isRequestSecure(c),
     });
   };
 

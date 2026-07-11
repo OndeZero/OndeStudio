@@ -110,6 +110,8 @@ describe("self-service over HTTP (PD §5.6)", () => {
     const setCookie = res.headers.get("set-cookie") ?? "";
     expect(setCookie).toContain("os_bc_session=");
     expect(setCookie).toContain("HttpOnly");
+    // Plain-http dev keeps Secure off; behind the tyrell TLS edge it is on (below).
+    expect(setCookie).not.toContain("Secure");
     cookie = setCookie.split(";")[0] ?? "";
     const profile = SelfProfileSchema.parse(await res.json());
     expect(profile).toMatchObject({ username: "dj-nova", kind: "external" });
@@ -129,6 +131,16 @@ describe("self-service over HTTP (PD §5.6)", () => {
     expect((await app.request("/self/me")).status).toBe(401);
     // The realms are separate: the broadcaster cookie is invisible to the team gate.
     expect((await app.request("/team-only", { headers: { cookie } })).status).toBe(401);
+  });
+
+  test("the self-service cookie is Secure over HTTPS (RFC 0002 — the internet-facing surface)", async () => {
+    const overHttps = await app.request("/self/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-proto": "https" },
+      body: JSON.stringify({ username: "dj-nova", password: "secret-pw" }),
+    });
+    expect(overHttps.status).toBe(200);
+    expect(overHttps.headers.get("set-cookie") ?? "").toContain("Secure");
   });
 
   test("wrong credentials are 422", async () => {

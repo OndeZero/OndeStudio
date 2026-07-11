@@ -83,6 +83,8 @@ describe("auth over HTTP", () => {
     expect(setCookie).toContain("os_session=");
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("SameSite=Lax");
+    // Plain-http dev keeps Secure off; behind TLS it is header-driven (below).
+    expect(setCookie).not.toContain("Secure");
     cookie = setCookie.split(";")[0] ?? "";
 
     const me = await app.request("/auth/me", { headers: { cookie } });
@@ -92,6 +94,16 @@ describe("auth over HTTP", () => {
 
     const users = await app.request("/users", { headers: { cookie } });
     expect(users.status).toBe(200);
+  });
+
+  test("the session cookie is Secure when the client reached the edge over HTTPS (RFC 0002)", async () => {
+    const overHttps = await app.request("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-proto": "https" },
+      body: JSON.stringify({ email: "demo@ondestudio.local", password: "demo-password-1" }),
+    });
+    expect(overHttps.status).toBe(200);
+    expect(overHttps.headers.get("set-cookie") ?? "").toContain("Secure");
   });
 
   test("a tampered cookie is rejected", async () => {
