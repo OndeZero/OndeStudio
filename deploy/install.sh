@@ -19,11 +19,14 @@ id ondestudio &>/dev/null || useradd --system --home-dir "$APP" --shell /usr/sbi
 mkdir -p "$DATA" "$BACKUPS"
 chown ondestudio:ondestudio "$DATA" "$BACKUPS"
 
-step "2. clone (https, public repo) or reuse existing checkout"
+step "2. clone (https, public repo) or fast-forward the existing checkout"
 if [ ! -d "$APP/.git" ]; then
   git clone "$REPO" "$APP"
+  chown -R ondestudio:ondestudio "$APP"
+else
+  # Re-run = upgrade: pull the latest main (never `git clean -x` — .env lives here).
+  sudo -u ondestudio env HOME="$DATA" git -C "$APP" pull --ff-only
 fi
-chown -R ondestudio:ondestudio "$APP"
 
 step "3. bun install + build the SPA bundle (as ondestudio, cache on /srv)"
 cd "$APP"
@@ -50,8 +53,10 @@ install -m 644 "$APP/deploy/ondestudio.service" /etc/systemd/system/
 install -m 644 "$APP/deploy/ondestudio-backup.service" /etc/systemd/system/
 install -m 644 "$APP/deploy/ondestudio-backup.timer" /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now ondestudio
-systemctl enable --now ondestudio-backup.timer
+systemctl enable ondestudio ondestudio-backup.timer
+# restart (not just start) so a re-run/upgrade picks up new units + new code
+systemctl restart ondestudio
+systemctl restart ondestudio-backup.timer
 
 step "8. verify"
 sleep 3

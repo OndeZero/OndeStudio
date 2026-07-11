@@ -24,9 +24,13 @@ ExecStart=/usr/local/bin/bun run packages/api/src/app.ts
 Restart=on-failure
 RestartSec=3
 # --- hardening (mirror wavezero-form) ---
+# NOTE: systemd unit files do NOT allow trailing comments on value lines —
+# they parse as extra values (ProtectSystem silently becomes "no").
 NoNewPrivileges=true
-ProtectSystem=strict            # all of / read-only, incl. /opt (code + .env) …
-ReadWritePaths=/srv/data/ondestudio   # … except the DB, WAL sidecars, HOME cache
+# All of / read-only, incl. /opt (code + .env) — except the DB dir below
+# (SQLite WAL sidecars + the HOME cache live there too).
+ProtectSystem=strict
+ReadWritePaths=/srv/data/ondestudio
 ProtectHome=true
 PrivateTmp=true
 ProtectKernelTunables=true
