@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import { getSignedCookie } from "hono/cookie";
 import { systemClock } from "./kernel/clock";
@@ -59,7 +60,17 @@ import { createApiApp } from "./platform/http";
 import { createLogger } from "./platform/logger";
 import { registerOpenApi } from "./platform/openapi";
 import { loadOrCreateSessionSecret } from "./platform/secret";
+import { mountSpa } from "./platform/spa";
 import { createSseHub, createSseRoutes } from "./platform/sse";
+
+/**
+ * The built web bundle (Vite default `packages/web/dist`, no `outDir`
+ * override). Resolved from this file, so it is correct both in the dev tree and
+ * under the systemd layout (`/opt/OndeStudio/...`), which keeps the same
+ * relative shape (RFC 0002). `bun run build` produces it; when it is absent
+ * (dev api-only, tests) `mountSpa` simply 404s through — see spa.ts.
+ */
+const WEB_DIST = fileURLToPath(new URL("../../web/dist", import.meta.url));
 
 /**
  * The public read seam (docs/2 §6.4-6.5): everything else needs a session.
@@ -418,6 +429,9 @@ export function buildServer(config: AppConfig = loadConfig()) {
 
   const app = new Hono();
   app.route("/api/v1", api);
+  // One process, two surfaces (RFC 0002): the same Bun process serves the built
+  // SPA + history fallback. Registered AFTER the API so `/api/v1/*` always wins.
+  mountSpa(app, WEB_DIST);
 
   // Ingest: poll each station's now-playing (AzuraCast SSE upgrade: ADR-0011).
   const startIngest = (): (() => void) => {
