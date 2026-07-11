@@ -1,0 +1,41 @@
+# OndeStudio (RFC 0002): one always-on Bun process serving API + built SPA.
+# Install: /etc/systemd/system/ondestudio.service (deploy/install.sh does it).
+# Modeled on the box's ondeplayer.service, hardened like wavezero-form.
+[Unit]
+Description=OndeStudio (OndeZero studio) — API + web, single Bun process
+# HOST binds the tailnet address, so tailscaled must be up before we bind.
+After=network-online.target tailscaled.service
+Wants=network-online.target
+# Crash-loop backstop: a hard-failing boot (bad .env, bad migration) enters
+# `failed` instead of hammering AzuraCast's mgmt API every 3s forever.
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=ondestudio
+Group=ondestudio
+WorkingDirectory=/opt/OndeStudio
+# Bun autoloads /opt/OndeStudio/.env from WorkingDirectory — the ONLY env
+# loader (no EnvironmentFile: systemd's parser is not dotenv, and this keeps
+# the secrets out of `systemctl show`). Keep .env to plain KEY=value lines.
+Environment=HOME=/srv/data/ondestudio
+ExecStart=/usr/local/bin/bun run packages/api/src/app.ts
+Restart=on-failure
+RestartSec=3
+# --- hardening (mirror wavezero-form) ---
+NoNewPrivileges=true
+ProtectSystem=strict            # all of / read-only, incl. /opt (code + .env) …
+ReadWritePaths=/srv/data/ondestudio   # … except the DB, WAL sidecars, HOME cache
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+# MemoryDenyWriteExecute stays off (default): Bun's JIT needs W^X relaxed.
+
+[Install]
+WantedBy=multi-user.target

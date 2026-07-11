@@ -1,0 +1,17 @@
+# Nightly OndeStudio DB snapshot (RFC 0002) — separate unit so the main
+# service never needs write access to /srv/backups.
+[Unit]
+Description=OndeStudio nightly SQLite snapshot (VACUUM INTO + rotation)
+
+[Service]
+Type=oneshot
+User=ondestudio
+Group=ondestudio
+Environment=HOME=/srv/data/ondestudio
+ExecStart=/opt/OndeStudio/deploy/backup.sh
+NoNewPrivileges=true
+ProtectSystem=strict
+# read-write on the DB dir too: VACUUM INTO takes a normal connection (WAL).
+ReadWritePaths=/srv/data/ondestudio /srv/backups/ondestudio
+ProtectHome=true
+PrivateTmp=true

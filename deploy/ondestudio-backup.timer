@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly OndeStudio DB snapshot at 04:30 (podcaster.sh runs 08:00)
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target
