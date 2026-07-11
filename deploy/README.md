@@ -10,7 +10,7 @@ pattern (`/opt/OndePlayer/deploy`).
 | `ondestudio.service` | `/etc/systemd/system/` | the always-on Bun process (API + built SPA on `HOST:4400`) |
 | `ondestudio-backup.service` + `.timer` | `/etc/systemd/system/` | nightly 04:30 `VACUUM INTO` snapshot → `/srv/backups/ondestudio`, 14-day rotation |
 | `backup.sh` / `backup.ts` | run from the checkout | the snapshot implementation (bun:sqlite, no sqlite3-CLI dependency) |
-| `tyrell/studio-app.ondezero.net.conf` | tyrell `/etc/nginx/sites-available/` | public vhost: `/self` + read seam only, team API 403'd, `X-Forwarded-Proto` set |
+| `tyrell/studio2.ondezero.net.conf` | tyrell `/etc/nginx/sites-available/` | public vhost: `/self` + read seam only, team API 403'd, `X-Forwarded-Proto` set |
 | `tyrell/install-vhost.sh` | run as **root on tyrell** | installs + enables the vhost, `nginx -t`, reload, verifies |
 
 **Secrets:** `install.sh` expects the production `.env` staged at

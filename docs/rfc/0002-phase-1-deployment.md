@@ -41,7 +41,7 @@ OndeStudio runs as a single always-on Bun process on **onde-zero**, code under `
                     ┌────────────┴─────────────────────────────┐
                     │                 tyrell VM                 │
                     │                  nginx                    │
-                    │  studio-app.ondezero.net                  │
+                    │  studio2.ondezero.net                     │
                     │   PUBLIC allowlist → /api/v1/self/*       │
                     │                    + /stations/*/{now,sse}│
                     │   SPA shell served; else /api/v1 → 403    │
@@ -145,7 +145,7 @@ Notes:
 
 ### Public exposure (tyrell nginx + TLS)
 
-The internet reaches OndeStudio only via **tyrell**, and only for `/self/*` + the read seam. Propose the hostname **`studio-app.ondezero.net`** — deliberately distinct from AzuraCast's `studio.ondezero.net` (already the WebDJ/public AzuraCast host, `.env.example:5,28`), so the two vhosts never collide. The team/admin surface is **never** on this vhost; the team uses the tailnet.
+The internet reaches OndeStudio only via **tyrell**, and only for `/self/*` + the read seam. Propose the hostname **`studio2.ondezero.net`** — deliberately distinct from AzuraCast's `studio.ondezero.net` (already the WebDJ/public AzuraCast host, `.env.example:5,28`), so the two vhosts never collide. The team/admin surface is **never** on this vhost; the team uses the tailnet.
 
 Shared proxy snippet (defined once), then the allowlisting vhost — root installs on tyrell:
 
@@ -160,7 +160,7 @@ proxy_set_header   X-Forwarded-Proto $scheme;   # drives the Secure cookie flag
 ```
 
 ```nginx
-# /etc/nginx/sites-available/studio-app.ondezero.net  (tyrell)
+# /etc/nginx/sites-available/studio2.ondezero.net  (tyrell)
 map $http_upgrade $connection_upgrade { default upgrade; '' close; }
 # per-IP throttle for the ONE public login: argon2 is CPU-costly and the whole
 # app is a single Bun process, so an anonymous /self/login flood could starve
@@ -169,9 +169,9 @@ limit_req_zone $binary_remote_addr zone=selflogin:10m rate=5r/m;
 
 server {
     listen 443 ssl http2;
-    server_name studio-app.ondezero.net;
-    ssl_certificate     /etc/letsencrypt/live/studio-app.ondezero.net/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/studio-app.ondezero.net/privkey.pem;
+    server_name studio2.ondezero.net;
+    ssl_certificate     /etc/letsencrypt/live/studio2.ondezero.net/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/studio2.ondezero.net/privkey.pem;
 
     # onde-zero over the encrypted tailnet hop (HOST binds this same addr)
     set $ondestudio http://onde-zero.tailnet:4400;
@@ -200,10 +200,10 @@ server {
     # recon. nginx can still hit /health directly for its own upstream check.
     location /api/v1/ { return 403; }
 }
-server { listen 80; server_name studio-app.ondezero.net; return 301 https://$host$request_uri; }
+server { listen 80; server_name studio2.ondezero.net; return 301 https://$host$request_uri; }
 ```
 
-**Secure-context requirement.** The self-service webcaster (PD §5.6) uses `getUserMedia` + a WebSocket to the AzuraCast WebDJ harbor; browsers grant a microphone and open that socket **only from an HTTPS origin**. Serving `studio-app.ondezero.net` over TLS is therefore a functional precondition for "broadcast from here," not cosmetics. `AZURACAST_WEBDJ_URL` (`wss://studio.ondezero.net/radio/8015/input`, `.env.example:28`) is opened by the *client's browser*, so it stays a public `wss://` host — unlike `AZURACAST_BASE_URL`, the *server*→AzuraCast on-box URL (see Config). The team's tailnet access is HTTPS too (Tailscale's own cert), so the secure context holds for team users without any public exposure.
+**Secure-context requirement.** The self-service webcaster (PD §5.6) uses `getUserMedia` + a WebSocket to the AzuraCast WebDJ harbor; browsers grant a microphone and open that socket **only from an HTTPS origin**. Serving `studio2.ondezero.net` over TLS is therefore a functional precondition for "broadcast from here," not cosmetics. `AZURACAST_WEBDJ_URL` (`wss://studio.ondezero.net/radio/8015/input`, `.env.example:28`) is opened by the *client's browser*, so it stays a public `wss://` host — unlike `AZURACAST_BASE_URL`, the *server*→AzuraCast on-box URL (see Config). The team's tailnet access is HTTPS too (Tailscale's own cert), so the secure context holds for team users without any public exposure.
 
 Not exposing `/openapi.json` and `/health` publicly (they are in `PUBLIC_PATHS`, `app.ts:70-71`) is handled at the edge above; optionally drop `/openapi.json` from `PUBLIC_PATHS` in prod as belt-and-braces, but the edge 403 is sufficient.
 
@@ -271,9 +271,9 @@ One always-on process keeps *every* server-side loop alive (all self-scheduled i
 4. **(ondestudio)** `bun run build` → `packages/web/dist/` (requires the precondition PR).
 5. **(ondestudio)** create `/opt/OndeStudio/.env` (chmod 600) with the Config values — `AZURACAST_BASE_URL=http://localhost:8080`, `AZURACAST_WRITE_STATIONS=wz-test`, `DB_PATH=/srv/data/ondestudio.sqlite`, `HOST=<onde-zero tailnet addr>`, the API key, and an explicit `SESSION_SECRET` (≥32 chars). Keep it to plain `KEY=value` lines.
 6. **(ondestudio)** verify the on-box hairpin: `curl -sS http://localhost:8080/api/nowplaying` returns JSON, **not** a 301 to `https://studio.ondezero.net` (if it redirects, turn off AzuraCast's "Always Use HTTPS Browser URL" or use the container's host port). Then apply migrations *without* binding the port or starting loops by running an ops script that calls `createDb()`: `bun packages/api/scripts/import-users.ts` (read-only pull from AzuraCast; applies all pending migrations idempotently). Do **not** boot the full server just to migrate — that binds `:4400` and fires `driver.runOnce()`, risking a port collision with step 8 and a manual `wz-test` reconcile.
-7. **(ondestudio)** per teammate: `bun packages/api/scripts/issue-setup-link.ts <email>` — **rewrite the printed host**: the script hardcodes `http://localhost:5173/setup?token=…` (`issue-setup-link.ts:40`); the *token* is valid, but replace the host with **whatever origin the team currently reaches** — the **tailnet name during the pilot** (Stages 0-1), `studio-app.ondezero.net` only once a public origin exists for team use (which, under this design, it does not — the team stays on the tailnet, so the tailnet host is the durable answer). Do **not** run `seed:demo` (writes demo rows on `oz` + a demo login — dev only).
+7. **(ondestudio)** per teammate: `bun packages/api/scripts/issue-setup-link.ts <email>` — **rewrite the printed host**: the script hardcodes `http://localhost:5173/setup?token=…` (`issue-setup-link.ts:40`); the *token* is valid, but replace the host with **whatever origin the team currently reaches** — the **tailnet name during the pilot** (Stages 0-1), `studio2.ondezero.net` only once a public origin exists for team use (which, under this design, it does not — the team stays on the tailnet, so the tailnet host is the durable answer). Do **not** run `seed:demo` (writes demo rows on `oz` + a demo login — dev only).
 8. **(root, onde-zero)** install `/etc/systemd/system/ondestudio.service`, `systemctl daemon-reload`, `systemctl enable --now ondestudio`, verify `systemctl status` + `journalctl -u ondestudio` (look for "database ready" + "listening").
-9. **(root, tyrell)** *[Stage 3 only]* issue the cert for `studio-app.ondezero.net`, install the snippet + allowlisting server block, `nginx -t && systemctl reload nginx`. Confirm tyrell reaches `http://<onde-zero tailnet addr>:4400/api/v1/health` over the tailnet.
+9. **(root, tyrell)** *[Stage 3 only]* issue the cert for `studio2.ondezero.net`, install the snippet + allowlisting server block, `nginx -t && systemctl reload nginx`. Confirm tyrell reaches `http://<onde-zero tailnet addr>:4400/api/v1/health` over the tailnet.
 10. **(root, onde-zero)** install the nightly `VACUUM INTO` backup timer → `/srv/backups`, and confirm `.env` is included in the out-of-band backup set.
 
 **Upgrade:** `git fetch && git checkout <tag>` (**never** `git clean -x` — it would delete `.env`) → `bun install` → `bun run build` → `systemctl restart ondestudio` (migrations re-apply on boot; driver self-reconciles within ≤30s). **Rollback:** `git checkout <previous tag>` → `bun install` → `bun run build` → `systemctl restart`. Migrations are additive; keep releases migration-compatible across one step so a code-only rollback is safe, otherwise restore the pre-upgrade `/srv/backups` snapshot alongside the code rollback (Restore, above).
@@ -285,7 +285,7 @@ Deployment and write-adoption are deliberately **decoupled**: OndeStudio goes li
 1. **Stage 0 — deploy, `wz-test`-gated, tailnet-only.** All of the above with `AZURACAST_WRITE_STATIONS=wz-test`, bound to the tailnet, no public vhost. OndeStudio reads `oz` (mirror), writes only `wz-test`, verified with tagged cleanup. Not reachable from the internet.
 2. **Stage 1 — team pilot over the tailnet.** The team uses real grid/board/broadcaster-mgmt against real `oz` reads; writes still `wz-test`. Shake out auth, sessions (now `secure`), timezone, SSE under the real network. Setup-link host = the tailnet name.
 3. **Stage 2 — dedicated, least-privilege API account.** Provision OndeStudio's **own** AzuraCast account, **station-scoped** to `wz-test` (later `oz`) with only playlist/schedule/streamer permissions — *not* global admin — so a host compromise cannot reach production at all. Swap its key into `AZURACAST_API_KEY`, retire the reused shared global-admin key. Re-run the `wz-test` write suite + recorded-fixture tests (the M3 version-safety step, docs/2 §13) against the account. **This precedes any internet exposure.**
-4. **Stage 3 — public webcaster exposure.** Bring up the tyrell `studio-app.ondezero.net` vhost + TLS with the allowlist (public: `/self/*` + read seam; team/admin stay tailnet-only). Secure context for external webcasters is now satisfied. Still `wz-test`-only, and now on a least-privilege key.
+4. **Stage 3 — public webcaster exposure.** Bring up the tyrell `studio2.ondezero.net` vhost + TLS with the allowlist (public: `/self/*` + read seam; team/admin stay tailnet-only). Secure context for external webcasters is now satisfied. Still `wz-test`-only, and now on a least-privilege key.
 5. **Stage 4 — per-feature `oz` adoption.** Feature by feature, once trusted (PD §6 — *not* a single global flip): extend the dedicated account's scope to `oz`, add `oz` to `AZURACAST_WRITE_STATIONS`, restart, watch the reconciliation inbox. M4 fan-out writes obey the same gate.
 
 Only Stage 4 touches production audio; Stages 0-3 are pure deployment and can proceed now.
@@ -315,7 +315,7 @@ Only Stage 4 touches production audio; Stages 0-3 are pure deployment and can pr
 
 - **Who holds root, and who owns AzuraCast.** Runbook 1/8/9/10 and Stage 2 need concrete actors: who holds root on onde-zero, who administers tyrell (cert + vhost), and who owns the AzuraCast instance to provision the dedicated station-scoped account. Named before Stage 0 (onde-zero root) / Stage 2 (AzuraCast owner) / Stage 3 (tyrell root).
 - **The onde-zero bind address / name — blocks Stage 3.** The team reaches onde-zero as a tailnet peer (survey: `100.84.152.42`, `onde-zero.tail14bc63.ts.net`), so Stage 0-1 work today. The open part is how **tyrell** reaches it: the survey confirms tyrell and onde-zero are co-located on the same physical host and the same LAN (`ens18` = `192.168.4.102/24`), so two concrete options exist — (a) if tyrell is also a tailnet peer, bind the tailnet interface and use the encrypted hop (preferred; no firewall needed); (b) otherwise bind the **LAN** address `192.168.4.102:4400` and firewall `:4400` to tyrell's LAN IP (the hop is same-host plaintext, acceptable for a co-located link). The vhost uses the placeholder `onde-zero.tailnet:4400` until the choice is made. What remains is confirming tyrell's tailnet membership and picking the concrete `HOST` + nginx upstream.
-- **tyrell cert mechanism (Stage 3).** Let's Encrypt via certbot on tyrell (HTTP-01 needs `studio-app.ondezero.net`→tyrell:80; DNS-01 avoids that) vs. an existing wildcard tyrell already holds. Settled by whoever administers tyrell.
+- **tyrell cert mechanism (Stage 3).** Let's Encrypt via certbot on tyrell (HTTP-01 needs `studio2.ondezero.net`→tyrell:80; DNS-01 avoids that) vs. an existing wildcard tyrell already holds. Settled by whoever administers tyrell.
 - **on-box hairpin — one toggle to confirm.** The survey confirmed the AzuraCast container publishes `:8080` on the host (fingerprinted: `localhost:8080` → nginx `302`). What remains is whether AzuraCast's "Always Use HTTPS Browser URL" is off, so `http://localhost:8080` serves the API rather than `301`-redirecting to the public host — runbook step 6 is that check.
 - **M5 seam auth.** When OndePlayer reads OndeStudio's `schedule`/`now`, does it hit the tailnet origin or `:4400` directly on-box? Likely the latter (both on onde-zero) — settled in the M5 RFC.
 - **now-playing meta push cutover.** The exact ordering that disables OndePlayer's `live-meta-sync` in the same change that arms OndeStudio's push — settled in the M5/meta-push RFC (server-side, per RFC 0001).
