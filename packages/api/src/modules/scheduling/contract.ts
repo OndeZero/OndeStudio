@@ -1,6 +1,7 @@
 import type {
   MirrorBlock as MirrorBlockDto,
   Occurrence as OccurrenceDto,
+  PublicScheduleItem,
   ShowDetail as ShowDetailDto,
   ShowSummary as ShowSummaryDto,
   Slot as SlotDto,
@@ -35,6 +36,34 @@ export function occurrenceToContract(
     issueFlags: [...occurrence.issueFlags],
     contentDurationMin: occurrence.contentDurationMin,
     broadcasterId: slot.broadcasterId,
+  };
+}
+
+/**
+ * Public projection (RFC 0003; docs/2 §6.4): an occurrence → an announceable
+ * schedule item, the seam OndePlayer's Upcoming reads. The caller filters to
+ * `validated`/`aired` occurrences; this drops every team internal and applies
+ * **revert-to-generic** (PD §5.5) — once an occurrence has aired, its
+ * episode-specific title falls back to the generic show title. Live occurrences
+ * carry the broadcaster's public display name (`streamerName`), never the id.
+ */
+export function occurrenceToPublicScheduleItem(
+  enriched: EnrichedOccurrence,
+  now: Date,
+  streamerName: string | null,
+): PublicScheduleItem {
+  const { occurrence, slot, title, episodeTitle } = enriched;
+  const aired = occurrence.negotiation.effectiveAt(occurrence.endsAtUtc, now) === "aired";
+  return {
+    id: occurrence.id,
+    kind: slot.kind,
+    title,
+    // Revert-to-generic after airing (PD §5.5): the episode announcement drops.
+    episodeTitle: aired ? null : episodeTitle,
+    live: slot.kind === "live" ? { streamerName } : null,
+    startsAt: occurrence.startsAtUtc.toISOString(),
+    endsAt: occurrence.endsAtUtc.toISOString(),
+    durationMin: occurrence.durationMin,
   };
 }
 

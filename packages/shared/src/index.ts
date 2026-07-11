@@ -11,6 +11,7 @@ export * from "./driver";
 export * from "./episodes";
 export * from "./media";
 export * from "./on-air";
+export * from "./schedule";
 export * from "./scheduling";
 export * from "./scheduling-states";
 export * from "./self-service";
