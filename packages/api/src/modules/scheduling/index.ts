@@ -16,6 +16,7 @@ export { EpisodeQueueService } from "./episode-queue-service";
 export { createEpisodeRoutes } from "./episode-routes";
 export type { GridChangedDomainEvent } from "./events";
 export type { FolderFile, MediaScanPort, MirrorBlock, MirrorSchedulePort } from "./ports";
+export { createPublicScheduleRoutes, type StreamerDirectory } from "./public-schedule-routes";
 export type { SchedulingRepo, ShowRecord, SlotRecord, UpdateShowFields } from "./repo";
 export { createSchedulingRoutes } from "./routes";
 export { type EnrichedOccurrence, type GridFilters, SchedulingService } from "./service";

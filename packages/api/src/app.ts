@@ -43,6 +43,7 @@ import {
 } from "./modules/playout/wiring";
 import {
   createEpisodeRoutes,
+  createPublicScheduleRoutes,
   createSchedulingRoutes,
   createShowRoutes,
   decodeOccurrenceId,
@@ -50,6 +51,7 @@ import {
   type MediaScanPort,
   SchedulingService,
   ShowService,
+  type StreamerDirectory,
   slotToContract,
 } from "./modules/scheduling";
 import { DrizzleSchedulingRepo } from "./modules/scheduling/wiring";
@@ -83,6 +85,9 @@ const PUBLIC_PATHS = [
   /^\/api\/v1\/auth\/(login|setup)$/,
   /^\/api\/v1\/stations\/[^/]+\/now$/,
   /^\/api\/v1\/stations\/[^/]+\/sse$/,
+  // The announceable Upcoming seam (RFC 0003, M5). Same-origin unauthenticated
+  // read; the tyrell edge keeps it tailnet/on-box until the galaxy needs it.
+  /^\/api\/v1\/stations\/[^/]+\/schedule$/,
   // Self-service (PD §5.6) is its own auth realm — the team gate steps aside and
   // the broadcaster middleware guards /self/me + /self/slots.
   /^\/api\/v1\/self\//,
@@ -365,6 +370,18 @@ export function buildServer(config: AppConfig = loadConfig()) {
     }, 4000);
   });
 
+  // Public schedule seam (RFC 0003): resolve live broadcasters' public display
+  // names by id without the scheduling module importing people (docs/2 §3.6).
+  const streamerDirectory: StreamerDirectory = {
+    namesByIds: async (ids) => {
+      const wanted = new Set(ids);
+      const all = await broadcasterRepo.list();
+      return new Map(
+        all.filter((b) => wanted.has(b.id)).map((b) => [b.id, b.displayName] as const),
+      );
+    },
+  };
+
   const cookieSecret = loadOrCreateSessionSecret(
     config.sessionSecret,
     resolveDataPath("data/session-secret"),
@@ -398,6 +415,7 @@ export function buildServer(config: AppConfig = loadConfig()) {
   );
   api.route("/", createPlayoutRoutes(playoutService));
   api.route("/", createSchedulingRoutes(schedulingService));
+  api.route("/", createPublicScheduleRoutes(schedulingService, streamerDirectory, systemClock));
   api.route("/", createShowRoutes(showService));
   api.route("/", createEpisodeRoutes(episodeQueueService));
   api.route("/", createContentRoutes(contentService));
