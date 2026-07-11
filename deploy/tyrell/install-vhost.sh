@@ -14,6 +14,9 @@ ln -sf "$DST" /etc/nginx/sites-enabled/studio2.ondezero.net
 nginx -t
 systemctl reload nginx
 
-echo "verify:"
-curl -sI https://studio2.ondezero.net | head -3
-curl -s -o /dev/null -w 'team route blocked publicly: /api/v1/driver -> %{http_code} (expect 403)\n' https://studio2.ondezero.net/api/v1/driver
+echo "verify (via localhost — tyrell can't reach its own public IP, NAT hairpin):"
+curl -skI --max-time 8 --resolve studio2.ondezero.net:443:127.0.0.1 https://studio2.ondezero.net | head -3
+curl -sk -o /dev/null --max-time 8 --resolve studio2.ondezero.net:443:127.0.0.1 \
+  -w 'team route blocked publicly: /api/v1/driver -> %{http_code} (expect 403)\n' \
+  https://studio2.ondezero.net/api/v1/driver
+echo "(full external verification must run from OUTSIDE the NAT)"
